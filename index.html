@@ -1,0 +1,2753 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bogotá Run: Mark Arena y Gonzalo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #18202c;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            touch-action: none;
+        }
+        #canvas-container {
+            position: fixed; inset: 0; z-index: 1;
+        }
+        .hud-glass {
+            background: rgba(15, 23, 42, 0.72);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+        }
+        @keyframes pulseGlow {
+            0%, 100% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.06); filter: brightness(1.25); }
+        }
+        .combo-active { animation: pulseGlow 1.1s infinite ease-in-out; }
+        @keyframes floatToast {
+            0% { opacity: 0; transform: translate(-50%, 12px) scale(0.9); }
+            15% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+            85% { opacity: 1; transform: translate(-50%, -6px) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -18px) scale(0.95); }
+        }
+        .toast-anim { animation: floatToast 1.6s forwards ease-out; }
+    </style>
+</head>
+<body>
+
+    <!-- Contenedor 3D -->
+    <div id="canvas-container"></div>
+
+    <!-- HUD Minimalista en Tiempo Real -->
+    <div id="hud" class="fixed inset-0 z-10 pointer-events-none hidden flex flex-col justify-between p-3 sm:p-5">
+        <!-- Fila Superior -->
+        <div class="flex flex-wrap justify-between items-start gap-2">
+            <!-- Puntaje y Estado de Cada Corredor -->
+            <div class="hud-glass px-4 py-2.5 rounded-2xl text-white flex items-center gap-3 self-start">
+                <div>
+                    <div class="text-[11px] uppercase tracking-widest text-slate-300 font-semibold">Puntaje Dúo</div>
+                    <div class="text-2xl sm:text-3xl font-black tracking-tight tabular-nums" id="hud-score">0</div>
+                </div>
+                <div class="flex flex-col gap-1.5 border-l border-white/15 pl-3 text-[11px] font-bold">
+                    <div>
+                        <div id="status-gonzalo" class="text-sky-300 flex items-center gap-1">
+                            <span>🧢 Gonzalo:</span> <span class="text-emerald-400">Corriendo</span>
+                        </div>
+                        <div id="timers-gonzalo" class="flex flex-wrap gap-1 mt-0.5"></div>
+                    </div>
+                    <div>
+                        <div id="status-mark" class="text-amber-300 flex items-center gap-1">
+                            <span>🧥 Mark Arena:</span> <span class="text-emerald-400">Corriendo</span>
+                        </div>
+                        <div id="timers-mark" class="flex flex-wrap gap-1 mt-0.5"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Barra de Progreso de Ruta Icónica y Control Musical -->
+            <div class="hud-glass px-5 py-2.5 rounded-2xl text-white w-full max-w-md">
+                <div class="flex justify-between items-center text-xs font-bold mb-1.5">
+                    <span class="text-sky-300" id="route-start">⛰️ Monserrate</span>
+                    <span class="text-[11px] uppercase tracking-wider text-slate-300" id="route-name">Nivel 1</span>
+                    <span class="text-amber-300" id="route-end">🏛️ Museo del Oro</span>
+                </div>
+                <div class="w-full h-3 bg-slate-900/90 rounded-full overflow-hidden p-0.5 border border-white/10 relative">
+                    <div id="route-progress" class="h-full bg-gradient-to-r from-sky-400 via-emerald-400 to-amber-400 rounded-full transition-all duration-100" style="width: 0%;"></div>
+                </div>
+                <!-- Control de Música Colombiana por Nivel -->
+                <div class="flex items-center justify-between gap-2 mt-1.5 pt-1 border-t border-white/10 text-[10px]">
+                    <span id="music-genre-label" class="font-bold text-amber-300 truncate">🪗 Vallenato • Diomedes Díaz</span>
+                    <div class="flex items-center gap-1 pointer-events-auto">
+                        <button id="boat-stage-btn" type="button" class="px-1.5 py-0.5 rounded bg-cyan-500/25 hover:bg-cyan-500/45 border border-cyan-400/40 text-cyan-200 font-bold cursor-pointer" title="Ir al Lago Simón Bolívar en Lancha">🚤 Lago</button>
+                        <button id="switch-level-btn" type="button" class="px-1.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/40 border border-amber-400/40 text-amber-200 font-bold cursor-pointer" title="Cambiar de Nivel y Ritmo Musical">⏭️ Nivel</button>
+                        <button id="vol-down-btn" type="button" class="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white font-bold cursor-pointer" title="Bajar Volumen">🔉-</button>
+                        <button id="vol-up-btn" type="button" class="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white font-bold cursor-pointer" title="Subir Volumen">🔊+</button>
+                        <button id="mute-btn" type="button" class="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white font-bold cursor-pointer" title="Silenciar / Activar Música">🔇</button>
+                        <input id="volume-slider" type="range" min="0" max="100" value="65" class="w-12 sm:w-16 accent-amber-400 cursor-pointer" title="Volumen de Música">
+                    </div>
+                </div>
+                <div id="section-alert" class="text-[10px] text-center font-bold text-amber-300 mt-1 hidden">
+                    🚡 ¡TRAMO DE TELEFÉRICO! SALTA ENTRE CABINAS
+                </div>
+            </div>
+
+            <!-- Multiplicador de Combo -->
+            <div id="combo-box" class="hud-glass px-4 py-2.5 rounded-2xl text-white text-right self-start">
+                <div class="text-[11px] uppercase tracking-widest text-amber-300 font-bold">Multiplicador</div>
+                <div class="text-2xl sm:text-3xl font-black text-amber-400" id="hud-combo">x1</div>
+            </div>
+        </div>
+
+        <!-- Notificaciones de Habilidades, Gastronomía y Sinergias -->
+        <div id="toast-area" class="relative w-full h-12"></div>
+
+        <!-- Overlay de Bandada de Palomas (Nivel 3) -->
+        <div id="pigeon-overlay" class="fixed inset-0 pointer-events-none hidden flex items-center justify-center z-20">
+            <div class="text-6xl sm:text-8xl animate-bounce opacity-85 select-none">🕊️ 🕊️ 🕊️ 🕊️ 🕊️</div>
+        </div>
+
+        <!-- Fila Inferior: Barra de Energía Compartida y Controles Táctiles -->
+        <div class="flex flex-col items-center gap-2 w-full">
+            <div class="hud-glass px-5 py-2.5 rounded-full text-white flex items-center gap-4 w-full max-w-xl">
+                <span class="text-xs font-extrabold text-sky-300 whitespace-nowrap">⚡ ENERGÍA DÚO</span>
+                <div class="flex-1 h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5">
+                    <div id="shared-energy-bar" class="h-full bg-gradient-to-r from-sky-400 via-emerald-400 to-amber-400 rounded-full transition-all duration-150" style="width: 50%;"></div>
+                </div>
+                <span id="energy-status" class="text-[11px] font-bold text-amber-300 whitespace-nowrap">SHIFT / TURBO</span>
+                <div class="hidden sm:flex gap-1">
+                    <span id="dot-1" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                    <span id="dot-2" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+                    <span id="dot-3" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+                    <span id="dot-4" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+                    <span id="dot-5" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+                </div>
+            </div>
+
+            <!-- Botones Táctiles para Móvil / Tablet -->
+            <div class="flex justify-between w-full max-w-2xl pointer-events-auto sm:hidden gap-2">
+                <div class="hud-glass p-2 rounded-2xl flex gap-1.5 items-center">
+                    <button id="btn-g-left" type="button" class="p-3 bg-sky-600/80 active:bg-sky-500 rounded-xl text-white font-bold">◀</button>
+                    <button id="btn-g-jump" type="button" class="px-3.5 py-3 bg-sky-500 active:bg-sky-400 rounded-xl text-white font-extrabold text-xs">GONZALO ▲</button>
+                    <button id="btn-g-right" type="button" class="p-3 bg-sky-600/80 active:bg-sky-500 rounded-xl text-white font-bold">▶</button>
+                </div>
+                <button id="btn-relay" type="button" class="hud-glass px-3 py-3 rounded-2xl text-amber-300 font-black text-xs active:scale-95">⚡ TURBO</button>
+                <div class="hud-glass p-2 rounded-2xl flex gap-1.5 items-center">
+                    <button id="btn-m-left" type="button" class="p-3 bg-slate-600/80 active:bg-slate-500 rounded-xl text-white font-bold">◀</button>
+                    <button id="btn-m-jump" type="button" class="px-3.5 py-3 bg-amber-500 active:bg-amber-400 rounded-xl text-slate-900 font-extrabold text-xs">MARK ▲</button>
+                    <button id="btn-m-right" type="button" class="p-3 bg-slate-600/80 active:bg-slate-500 rounded-xl text-white font-bold">▶</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pantalla de Inicio -->
+    <div id="menu-screen" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-md overflow-y-auto">
+        <div class="hud-glass max-w-3xl w-full rounded-3xl p-6 sm:p-8 text-white border border-white/20 shadow-2xl my-auto">
+            <div class="flex items-center gap-2 text-amber-400 text-xs font-extrabold uppercase tracking-widest mb-2">
+                <span>🇨🇴 Aventura Urbana Cooperativa en 3D</span>
+                <span>•</span>
+                <span>4 Rutas y Ritmos Colombianos</span>
+            </div>
+            <h1 class="text-3xl sm:text-5xl font-black tracking-tight mb-2 bg-gradient-to-r from-white via-sky-200 to-amber-300 bg-clip-text text-transparent">
+                Bogotá Run: Mark Arena y Gonzalo
+            </h1>
+            <p class="text-slate-300 text-sm sm:text-base mb-5 leading-relaxed">
+                Prepara a <b>Gonzalo</b> (el niño) y a <b>Mark Arena</b> (la niña) en la sala 3D, elige sus prendas y mascotas, y corre por <b>Monserrate, Guadalupe, El Campín, Chorro de Quevedo y Plaza de Bolívar</b>.
+            </p>
+
+            <!-- Fichas de Personajes -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <div class="bg-slate-900/75 border border-sky-400/30 p-3.5 rounded-2xl">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-extrabold text-sky-300 text-sm">🧢 GONZALO (El Niño)</span>
+                        <span class="text-[11px] bg-sky-500/20 text-sky-200 px-2 py-0.5 rounded-full font-bold">Teclas: A / D / W</span>
+                    </div>
+                    <p class="text-xs text-slate-300">Personalizable con camisetas, chaquetas, gorras, gafas, mochilas y mascota propia.</p>
+                </div>
+                <div class="bg-slate-900/75 border border-amber-400/30 p-3.5 rounded-2xl">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-extrabold text-amber-300 text-sm">👧 MARK ARENA (La Niña)</span>
+                        <span class="text-[11px] bg-amber-500/20 text-amber-200 px-2 py-0.5 rounded-full font-bold">Teclas: ◀ / ▶ / ▲</span>
+                    </div>
+                    <p class="text-xs text-slate-300">Personalizable con sudaderas, sombreros, botas, gafas, morrales y su propia mascota.</p>
+                </div>
+            </div>
+
+            <!-- Mapa de 4 Niveles y Reglas -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5 text-xs">
+                <div class="bg-amber-500/10 border border-amber-400/30 p-3 rounded-xl">
+                    <div class="font-bold text-amber-300 mb-1">🥟 Gastronomía y 5 Habilidades 3D</div>
+                    <ul class="space-y-1 text-slate-300">
+                        <li>• <b>Comida Típica:</b> Buñuelos, Changua, Arepas, Empanadas y Almojábanas.</li>
+                        <li>• <b>Poderes Individuales:</b> ⚡ Rapidez, 🦘 Súper Salto, 🛡️ Protección, 💎 Puntos Extra y 🧲 Imán.</li>
+                        <li>• <b>100% Independientes:</b> Pueden compartir carril y seguir jugando si uno cae.</li>
+                    </ul>
+                </div>
+                <div class="bg-sky-500/10 border border-sky-400/30 p-3 rounded-xl">
+                    <div class="font-bold text-sky-300 mb-1">🎶 Rutas de Bogotá y Música Colombiana</div>
+                    <ul class="space-y-1 text-slate-300">
+                        <li><b>1. Monserrate & Guadalupe:</b> 🪗 Vallenato (Diomedes Díaz).</li>
+                        <li><b>2. Estadio El Campín & Centro:</b> 🥁 Cumbia (La Pollera Colorada).</li>
+                        <li><b>3. Chorro de Quevedo & Bolívar:</b> 🎸 Carranga (Jorge Velosa).</li>
+                        <li><b>4. Parque Nacional a la 93:</b> 🎺 Popular (Jessi Uribe).</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Selector de Nivel Inicial -->
+            <div class="mb-5">
+                <div class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 text-center">Elige el nivel y ritmo musical para iniciar:</div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-bold">
+                    <button type="button" data-start-route="0" class="route-select-btn px-2.5 py-2 rounded-xl border border-amber-400 bg-amber-500/25 text-amber-200 cursor-pointer transition">1. Monserrate<br><span class="text-[10px] font-normal">🪗 Diomedes Díaz</span></button>
+                    <button type="button" data-start-route="1" class="route-select-btn px-2.5 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/15 text-slate-200 cursor-pointer transition">2. El Campín<br><span class="text-[10px] font-normal">🥁 Pollera Colorada</span></button>
+                    <button type="button" data-start-route="2" class="route-select-btn px-2.5 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/15 text-slate-200 cursor-pointer transition">3. Candelaria<br><span class="text-[10px] font-normal">🎸 Jorge Velosa</span></button>
+                    <button type="button" data-start-route="3" class="route-select-btn px-2.5 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/15 text-slate-200 cursor-pointer transition">4. Parque 93<br><span class="text-[10px] font-normal">🎺 Jessi Uribe</span></button>
+                </div>
+            </div>
+
+            <button id="open-wardrobe-btn" type="button" class="w-full py-4 rounded-2xl bg-gradient-to-r from-sky-500 via-blue-600 to-amber-500 hover:brightness-110 text-white font-black text-lg tracking-wide shadow-xl transition transform active:scale-95 cursor-pointer">
+                ENTRAR A LA SALA DE PERSONALIZACIÓN 👕🐶
+            </button>
+        </div>
+    </div>
+
+    <!-- Sala 3D de Personalización de Personajes y Mascotas -->
+    <div id="wardrobe-screen" class="fixed inset-0 z-30 hidden flex flex-col justify-between p-3 sm:p-5 pointer-events-none">
+        <!-- Encabezado y Selector de Personaje (Niño / Niña) -->
+        <div class="hud-glass px-4 py-3 rounded-2xl text-white text-center max-w-xl mx-auto pointer-events-auto border border-white/20">
+            <div class="text-[10px] font-extrabold uppercase tracking-widest text-amber-300 mb-1">🎨 Estudio de Caricatura 3D • Sala de Preparación</div>
+            <div class="flex items-center justify-center gap-2">
+                <button id="select-char-gonzalo" type="button" class="px-4 py-2 rounded-xl bg-sky-500 text-white font-black text-xs sm:text-sm shadow-lg border-2 border-white transition cursor-pointer">
+                    🧢 GONZALO (NIÑO)
+                </button>
+                <button id="select-char-mark" type="button" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-black text-xs sm:text-sm border border-white/20 transition cursor-pointer">
+                    👧 MARK ARENA (NIÑA)
+                </button>
+            </div>
+        </div>
+
+        <!-- Paneles Laterales (Centro 100% Despejado para el Personaje) -->
+        <div class="flex justify-between items-center w-full my-auto pointer-events-none px-1 sm:px-4">
+            <!-- Panel Izquierdo: Ropa Principal -->
+            <div class="hud-glass p-3 sm:p-4 rounded-3xl text-white w-44 sm:w-64 pointer-events-auto border border-white/20 space-y-3 text-xs">
+                <div class="font-black text-amber-300 text-xs sm:text-sm border-b border-white/15 pb-1.5 text-center">
+                    👕 VESTUARIO
+                </div>
+                <div class="space-y-1">
+                    <div class="font-bold text-slate-200 text-[11px]">Camiseta / Chaqueta:</div>
+                    <button type="button" data-part="top" class="wardrobe-active-cycle w-full py-2 px-3 rounded-xl bg-sky-500/30 hover:bg-sky-500/50 border border-sky-400/40 font-extrabold cursor-pointer transition">Cambiar Prenda 🎨</button>
+                </div>
+                <div class="space-y-1">
+                    <div class="font-bold text-slate-200 text-[11px]">Pantalón / Jeans:</div>
+                    <button type="button" data-part="pants" class="wardrobe-active-cycle w-full py-2 px-3 rounded-xl bg-sky-500/30 hover:bg-sky-500/50 border border-sky-400/40 font-extrabold cursor-pointer transition">Cambiar Pantalón 👖</button>
+                </div>
+                <div class="space-y-1">
+                    <div class="font-bold text-slate-200 text-[11px]">Zapatos / Tenis:</div>
+                    <button type="button" data-part="shoes" class="wardrobe-active-cycle w-full py-2 px-3 rounded-xl bg-sky-500/30 hover:bg-sky-500/50 border border-sky-400/40 font-extrabold cursor-pointer transition">Cambiar Calzado 👟</button>
+                </div>
+            </div>
+
+            <!-- Espacio Central Vacío para que el Personaje y su Mascota se vean de cuerpo entero -->
+            <div class="flex-1"></div>
+
+            <!-- Panel Derecho: Accesorios y Mascota -->
+            <div class="hud-glass p-3 sm:p-4 rounded-3xl text-white w-44 sm:w-64 pointer-events-auto border border-white/20 space-y-2.5 text-xs">
+                <div class="font-black text-sky-300 text-xs sm:text-sm border-b border-white/15 pb-1.5 text-center">
+                    🎒 ACCESORIOS Y MASCOTA
+                </div>
+                <div class="space-y-1">
+                    <div class="font-bold text-slate-200 text-[11px]">Gorra / Sombrero:</div>
+                    <button type="button" data-part="hat" class="wardrobe-active-cycle w-full py-1.5 px-3 rounded-xl bg-amber-500/30 hover:bg-amber-500/50 border border-amber-400/40 font-extrabold cursor-pointer transition">Cambiar Sombrero 🎩</button>
+                </div>
+                <div class="space-y-1">
+                    <div class="font-bold text-slate-200 text-[11px]">Gafas:</div>
+                    <button type="button" data-part="glasses" class="wardrobe-active-cycle w-full py-1.5 px-3 rounded-xl bg-amber-500/30 hover:bg-amber-500/50 border border-amber-400/40 font-extrabold cursor-pointer transition">Cambiar Gafas 🕶️</button>
+                </div>
+                <div class="space-y-1">
+                    <div class="font-bold text-slate-200 text-[11px]">Mochila / Morral:</div>
+                    <button type="button" data-part="bag" class="wardrobe-active-cycle w-full py-1.5 px-3 rounded-xl bg-amber-500/30 hover:bg-amber-500/50 border border-amber-400/40 font-extrabold cursor-pointer transition">Cambiar Mochila 🎒</button>
+                </div>
+                <div class="pt-1.5 border-t border-white/15 space-y-1">
+                    <div class="font-extrabold text-emerald-300 text-[11px]">🐾 Mascota Acompañante:</div>
+                    <button type="button" id="active-pet-btn" data-part="pet" class="wardrobe-active-cycle w-full py-2 px-3 rounded-xl bg-emerald-500/30 hover:bg-emerald-500/50 border border-emerald-400/50 font-black text-emerald-200 cursor-pointer transition">🐶 Perrito Criollo</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botón Grande Inferior: COMENZAR AVENTURA -->
+        <div class="max-w-md w-full mx-auto pointer-events-auto">
+            <button id="start-btn" type="button" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-amber-500 hover:brightness-110 text-white font-black text-lg sm:text-xl tracking-wider shadow-2xl border-2 border-white/40 transition transform active:scale-95 cursor-pointer">
+                COMENZAR AVENTURA 🚀
+            </button>
+        </div>
+    </div>
+
+    <!-- Pantalla de Ruta Completada y Medallas -->
+    <div id="level-complete-screen" class="fixed inset-0 z-30 hidden flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md">
+        <div class="hud-glass max-w-md w-full rounded-3xl p-7 text-center text-white border border-amber-400/30">
+            <div id="medal-icon" class="text-6xl mb-2">💎</div>
+            <div id="medal-title" class="text-xs font-extrabold uppercase tracking-widest text-emerald-400 mb-1">MEDALLA ESMERALDA</div>
+            <h2 id="complete-title" class="text-2xl sm:text-3xl font-black mb-2">¡Llegaron al Museo del Oro!</h2>
+            <p id="complete-desc" class="text-slate-300 text-sm mb-5">Descendieron desde los senderos de Monserrate hasta el Parque Santander.</p>
+
+            <div class="bg-slate-900/80 rounded-2xl p-4 mb-6 space-y-2 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Puntaje Acumulado:</span>
+                    <span id="complete-score" class="font-black text-amber-300">0</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Impulsos de Hombros:</span>
+                    <span id="complete-syncs" class="font-bold text-sky-300">0</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Multiplicador Máximo:</span>
+                    <span id="complete-combo" class="font-bold text-emerald-400">x1</span>
+                </div>
+            </div>
+
+            <button id="next-level-btn" type="button" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-white font-black text-base shadow-lg cursor-pointer">
+                SIGUIENTE RUTA BOGOTANA ➡️
+            </button>
+        </div>
+    </div>
+
+    <!-- Pantalla de Fin de Carrera (Solo cuando ambos corredores caen) -->
+    <div id="gameover-screen" class="fixed inset-0 z-30 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+        <div class="hud-glass max-w-md w-full rounded-3xl p-7 text-center text-white border border-rose-500/30">
+            <div class="text-5xl mb-2">🌧️</div>
+            <h2 class="text-2xl sm:text-3xl font-black mb-2 text-rose-300">¡Ambos Corredores Cayeron!</h2>
+            <p id="gameover-reason" class="text-slate-300 text-sm mb-5">Gonzalo y Mark Arena encontraron un obstáculo en la vía.</p>
+            <div class="bg-slate-900/80 rounded-2xl p-4 mb-6">
+                <div class="text-xs uppercase text-slate-400 font-bold">Puntaje Final</div>
+                <div id="gameover-score" class="text-3xl font-black text-amber-400">0</div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <button id="retry-btn" type="button" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 hover:brightness-110 text-white font-black text-sm shadow-lg cursor-pointer">
+                    REINTENTAR NIVEL 🔄
+                </button>
+                <button id="restart-all-btn" type="button" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:brightness-110 text-white font-black text-sm shadow-lg cursor-pointer">
+                    DESDE NIVEL 1 🏁
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 4 RUTAS ICÓNICAS DEL GDD DE BOGOTÁ ---
+        const ROUTES = [
+            {
+                id: 0,
+                name: "De las Nubes al Oro",
+                levelLabel: "Nivel 1 • Monserrate & Guadalupe",
+                genreLabel: "🪗 Vallenato • Diomedes Díaz",
+                startName: "⛰️ Monserrate",
+                endName: "🏛️ Museo del Oro",
+                length: 760,
+                speed: 20,
+                skyStart: '#64748b',
+                skyEnd: '#475569',
+                fogDensity: 0.016,
+                groundColor: '#3f3f46',
+                wallMode: 'cerros',
+                lanesCount: 4,
+                finishTitle: "¡Llegaron al Museo del Oro!",
+                finishDesc: "Descendieron desde Monserrate y Guadalupe al ritmo vallenato de Diomedes Díaz.",
+                thresholds: { silver: 4000, gold: 7500, emerald: 11000 }
+            },
+            {
+                id: 1,
+                name: "Pulso del Centro y El Campín",
+                levelLabel: "Nivel 2 • Eje Ambiental y El Campín",
+                genreLabel: "🥁 Cumbia • La Pollera Colorada",
+                startName: "⚽ Estadio El Campín",
+                endName: "🏙️ Torre Colpatria",
+                length: 820,
+                speed: 22,
+                skyStart: '#475569',
+                skyEnd: '#0f172a',
+                fogDensity: 0.013,
+                groundColor: '#7c2d12',
+                wallMode: 'centro',
+                hasCanal: true,
+                lanesCount: 4,
+                finishTitle: "¡Mirador de la Torre Colpatria!",
+                finishDesc: "Recorrieron El Campín y el Eje Ambiental bailando La Pollera Colorada.",
+                thresholds: { silver: 10500, gold: 16500, emerald: 23000 }
+            },
+            {
+                id: 2,
+                name: "La Candelaria Histórica",
+                levelLabel: "Nivel 3 • Chorro de Quevedo",
+                genreLabel: "🎸 Carranga • Jorge Velosa",
+                startName: "⛲ Chorro de Quevedo",
+                endName: "🏛️ Plaza de Bolívar",
+                length: 860,
+                speed: 24,
+                skyStart: '#334155',
+                skyEnd: '#1e293b',
+                fogDensity: 0.012,
+                groundColor: '#27272a',
+                wallMode: 'colonial',
+                lanesCount: 3,
+                finishTitle: "¡Meta en la Plaza de Bolívar!",
+                finishDesc: "Cruzaron La Candelaria al son carranguero de Jorge Velosa.",
+                thresholds: { silver: 18500, gold: 27000, emerald: 36000 }
+            },
+            {
+                id: 3,
+                name: "Ruta Cosmopolita al Atardecer",
+                levelLabel: "Nivel 4 • Parque Nacional a la 93",
+                genreLabel: "🎺 Popular • Yeison Jiménez",
+                startName: "🕰️ Parque Nacional",
+                endName: "✨ Parque de la 93",
+                length: 980,
+                speed: 26,
+                skyStart: '#4c1d95',
+                skyEnd: '#c2410c',
+                fogDensity: 0.010,
+                groundColor: '#3f6212',
+                wallMode: 'modern',
+                lanesCount: 4,
+                finishTitle: "¡Llegaron al Parque de la 93!",
+                finishDesc: "Completaron la ruta bogotana con música popular de Jessi Uribe.",
+                thresholds: { silver: 28000, gold: 40000, emerald: 52000 }
+            }
+        ];
+
+        // --- SISTEMA DE AUDIO Y MÚSICA COLOMBIANA ÚNICA POR NIVEL (Tone.js) ---
+        class SoundManager {
+            constructor() {
+                this.ready = false;
+                this.muted = false;
+                this.volume = 0.75;
+                this.currentGenre = 0;
+                this.musicLoop = null;
+                this.step = 0;
+            }
+            async init() {
+                if (this.ready) return;
+                try {
+                    await Tone.start();
+                    // Bus principal dedicado exclusivamente a la música del nivel
+                    this.musicGain = new Tone.Gain(this.volume * 0.55).toDestination();
+
+                    // Efectos de sonido (SFX) con volumen moderado para no tapar la música
+                    this.sfxSynth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: { type: 'sine' },
+                        envelope: { attack: 0.01, decay: 0.12, sustain: 0, release: 0.1 }
+                    }).toDestination();
+                    this.sfxSynth.volume.value = -18;
+
+                    this.sfxCrash = new Tone.MembraneSynth().toDestination();
+                    this.sfxCrash.volume.value = -16;
+
+                    // Instrumentos limpios para cada género colombiano (sin capas ambientales extra)
+                    this.leadSynth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: { type: 'triangle' },
+                        envelope: { attack: 0.015, decay: 0.16, sustain: 0.25, release: 0.18 }
+                    }).connect(this.musicGain);
+
+                    this.harmonySynth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: { type: 'sine' },
+                        envelope: { attack: 0.015, decay: 0.16, sustain: 0.2, release: 0.18 }
+                    }).connect(this.musicGain);
+                    this.harmonySynth.volume.value = -5;
+
+                    this.bassSynth = new Tone.MonoSynth({
+                        oscillator: { type: 'triangle' },
+                        envelope: { attack: 0.01, decay: 0.18, sustain: 0.25, release: 0.15 }
+                    }).connect(this.musicGain);
+
+                    this.percSynth = new Tone.MembraneSynth({
+                        pitchDecay: 0.03,
+                        octaves: 3,
+                        envelope: { attack: 0.005, decay: 0.15, sustain: 0 }
+                    }).connect(this.musicGain);
+                    this.percSynth.volume.value = -4;
+
+                    this.guachaFilter = new Tone.Filter(4800, "highpass").connect(this.musicGain);
+                    this.guacharacaSynth = new Tone.NoiseSynth({
+                        noise: { type: 'white' },
+                        envelope: { attack: 0.003, decay: 0.04, sustain: 0 }
+                    }).connect(this.guachaFilter);
+                    this.guacharacaSynth.volume.value = -12;
+
+                    this.ready = true;
+                    this.startMusicLoop();
+                } catch (err) {
+                    console.warn("Audio diferido:", err);
+                }
+            }
+
+            setGenre(idx) {
+                if (this.currentGenre !== idx) {
+                    this.currentGenre = idx;
+                    this.step = 0;
+                    if (this.ready) {
+                        this.leadSynth.releaseAll();
+                        this.harmonySynth.releaseAll();
+                        this.startMusicLoop();
+                    }
+                }
+            }
+
+            setVolume(val) {
+                this.volume = val;
+                if (this.musicGain && !this.muted) {
+                    this.musicGain.gain.rampTo(this.volume * 0.55, 0.08);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                if (this.musicGain) {
+                    this.musicGain.gain.rampTo(this.muted ? 0 : this.volume * 0.55, 0.08);
+                }
+                return this.muted;
+            }
+
+            startMusicLoop() {
+                if (this.musicLoop) clearInterval(this.musicLoop);
+
+                // Arreglos puros e identificables para cada nivel (32 pasos por frase musical)
+                const songs = {
+                    // NIVEL 1: Vallenato de Diomedes Díaz (Acordeón en terceras + Paseo Vallenato)
+                    0: {
+                        tempoMs: 155,
+                        lead: [
+                            "G4", "B4", "D5", "G5", "F#5", "E5", "D5", "B4",
+                            "C5", "E5", "G5", "E5", "D5", "C5", "B4", null,
+                            "A4", "C5", "E5", "A5", "G5", "F#5", "E5", "D5",
+                            "B4", "D5", "G5", "F#5", "E5", "D5", "G4", null
+                        ],
+                        harmony: [
+                            "B3", "D4", "G4", "B4", "A4", "G4", "F#4", "D4",
+                            "E4", "G4", "C5", "G4", "F#4", "E4", "D4", null,
+                            "C4", "E4", "A4", "C5", "B4", "A4", "G4", "F#4",
+                            "D4", "G4", "B4", "A4", "G4", "F#4", "B3", null
+                        ],
+                        bass: [
+                            "G2", null, "D2", null, "G2", null, "D2", null,
+                            "C3", null, "G2", null, "C3", null, "G2", null,
+                            "A2", null, "E2", null, "D2", null, "A2", null,
+                            "G2", null, "D2", null, "G2", null, "D2", null
+                        ],
+                        kick:   [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+                        guacha: [1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0]
+                    },
+                    // NIVEL 2: Cumbia - La Pollera Colorada (Melodía tradicional exacta y tambora)
+                    1: {
+                        tempoMs: 165,
+                        lead: [
+                            "E5", "E5", "G5", "E5", "C5", "A4", "C5", "E5",
+                            "D5", "D5", "F5", "D5", "B4", "G4", "B4", "D5",
+                            "E5", "E5", "G5", "E5", "C5", "A4", "C5", "E5",
+                            "D5", "C5", "B4", "G#4", "A4", null, "A4", null
+                        ],
+                        harmony: [
+                            "C5", "C5", "E5", "C5", "A4", "E4", "A4", "C5",
+                            "B4", "B4", "D5", "B4", "G4", "D4", "G4", "B4",
+                            "C5", "C5", "E5", "C5", "A4", "E4", "A4", "C5",
+                            "B4", "A4", "G#4", "E4", "E4", null, "E4", null
+                        ],
+                        bass: [
+                            "A2", null, "E2", null, "A2", null, "E2", null,
+                            "G2", null, "D2", null, "G2", null, "D2", null,
+                            "A2", null, "E2", null, "A2", null, "E2", null,
+                            "E2", null, "G#2", null, "A2", null, "E2", null
+                        ],
+                        kick:   [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+                        guacha: [0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1]
+                    },
+                    // NIVEL 3: Carranga de Jorge Velosa (Requinto y tiple estilo La Cucharita)
+                    2: {
+                        tempoMs: 145,
+                        lead: [
+                            "D5", "G5", "B5", "G5", "A5", "F#5", "D5", null,
+                            "D5", "F#5", "A5", "F#5", "G5", "E5", "D5", null,
+                            "D5", "G5", "B5", "G5", "C6", "B5", "A5", "G5",
+                            "F#5", "G5", "A5", "F#5", "G5", null, "G5", null
+                        ],
+                        harmony: [
+                            "B4", "D5", "G5", "D5", "F#5", "D5", "B4", null,
+                            "A4", "D5", "F#5", "D5", "E5", "C5", "B4", null,
+                            "B4", "D5", "G5", "D5", "A5", "G5", "F#5", "E5",
+                            "D5", "E5", "F#5", "D5", "D5", null, "D5", null
+                        ],
+                        bass: [
+                            "G2", null, "D2", null, "D2", null, "A2", null,
+                            "D2", null, "A2", null, "G2", null, "D2", null,
+                            "G2", null, "D2", null, "C3", null, "G2", null,
+                            "D2", null, "A2", null, "G2", null, "D2", null
+                        ],
+                        kick:   [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+                        guacha: [1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1]
+                    },
+                    // NIVEL 4: Música Popular de Jessi Uribe (Requinto y trompeta popular estilo Dulce Pecado)
+                    3: {
+                        tempoMs: 175,
+                        lead: [
+                            "E5", "A5", "C6", "B5", "A5", "G#5", "A5", null,
+                            "D5", "F5", "A5", "G5", "F5", "E5", "F5", null,
+                            "B4", "D5", "G#5", "F5", "E5", "D5", "C5", "B4",
+                            "C5", "E5", "B4", "G#4", "A4", null, "A4", null
+                        ],
+                        harmony: [
+                            "C5", "E5", "A5", "G#5", "F5", "E5", "E5", null,
+                            "A4", "D5", "F5", "E5", "D5", "C5", "D5", null,
+                            "G#4", "B4", "E5", "D5", "C5", "B4", "A4", "G#4",
+                            "A4", "C5", "G#4", "E4", "E4", null, "E4", null
+                        ],
+                        bass: [
+                            "A2", null, "E2", "E2", "A2", null, "E2", null,
+                            "D2", null, "A2", "A2", "D2", null, "A2", null,
+                            "E2", null, "B2", "B2", "E2", null, "B2", null,
+                            "A2", null, "E2", "E2", "A2", null, "E2", null
+                        ],
+                        kick:   [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1],
+                        guacha: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0]
+                    }
+                };
+
+                const song = songs[this.currentGenre] || songs[0];
+                this.musicLoop = setInterval(() => {
+                    if (!this.ready || this.muted || !state.running) return;
+                    const s = this.step % song.lead.length;
+                    if (song.lead[s]) this.leadSynth.triggerAttackRelease(song.lead[s], "16n");
+                    if (song.harmony[s]) this.harmonySynth.triggerAttackRelease(song.harmony[s], "16n");
+                    if (song.bass[s]) this.bassSynth.triggerAttackRelease(song.bass[s], "8n");
+                    if (song.kick[s]) this.percSynth.triggerAttackRelease("C2", "16n");
+                    if (song.guacha[s]) this.guacharacaSynth.triggerAttackRelease("32n");
+                    this.step++;
+                }, song.tempoMs);
+            }
+
+            playJump(note = "G4") {
+                if (!this.ready || this.muted) return;
+                this.sfxSynth.triggerAttackRelease(note, "32n");
+            }
+            playSync() {
+                if (!this.ready || this.muted) return;
+                this.sfxSynth.triggerAttackRelease(["C5", "G5"], "16n");
+            }
+            playRelay() {
+                if (!this.ready || this.muted) return;
+                this.sfxSynth.triggerAttackRelease(["D5", "A5"], "32n");
+            }
+            playItem(notes = ["E5", "G5"]) {
+                if (!this.ready || this.muted) return;
+                this.sfxSynth.triggerAttackRelease(notes[0], "32n");
+            }
+            playShield() {
+                if (!this.ready || this.muted) return;
+                this.sfxSynth.triggerAttackRelease(["F4", "C5"], "16n");
+            }
+            playCrash() {
+                if (!this.ready || this.muted) return;
+                this.sfxCrash.triggerAttackRelease("G1", "16n");
+            }
+        }
+        const sfx = new SoundManager();
+
+        // --- CONFIGURACIÓN DE ESCENA 3D ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#64748b');
+        scene.fog = new THREE.FogExp2('#64748b', 0.015);
+
+        const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 220);
+        camera.position.set(0, 4.6, 8.8);
+        camera.lookAt(0, 1.3, -10);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        // Iluminación bogotana
+        const hemiLight = new THREE.HemisphereLight('#e0f2fe', '#334155', 1.1);
+        scene.add(hemiLight);
+
+        const sunLight = new THREE.DirectionalLight('#fef08a', 1.35);
+        sunLight.position.set(16, 26, 12);
+        sunLight.castShadow = true;
+        scene.add(sunLight);
+
+        // --- TEXTURAS PROCEDURALES DE BOGOTÁ ---
+        function createCobbleTexture(baseHex, isWet = true) {
+            const c = document.createElement('canvas');
+            c.width = 256; c.height = 256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = baseHex;
+            ctx.fillRect(0, 0, 256, 256);
+
+            for (let y = 0; y < 256; y += 16) {
+                const offset = (y / 16) % 2 === 0 ? 0 : 12;
+                for (let x = -12; x < 256; x += 24) {
+                    const shade = 0.85 + Math.random() * 0.3;
+                    ctx.fillStyle = `rgba(255,255,255,${(shade - 0.85) * 0.25})`;
+                    ctx.fillRect(x + offset + 1, y + 1, 22, 14);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+                    ctx.strokeRect(x + offset, y, 24, 16);
+                }
+            }
+            if (isWet) {
+                ctx.fillStyle = 'rgba(186, 230, 253, 0.14)';
+                ctx.beginPath();
+                ctx.ellipse(90, 120, 45, 22, 0.2, 0, Math.PI * 2);
+                ctx.ellipse(190, 200, 35, 18, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(3, 28);
+            return tex;
+        }
+
+        function createBogotaLandmarkTexture(mode, variant) {
+            const c = document.createElement('canvas');
+            c.width = 512; c.height = 256;
+            const ctx = c.getContext('2d');
+
+            if (mode === 'cerros') {
+                ctx.fillStyle = '#14532d';
+                ctx.fillRect(0, 0, 512, 256);
+                ctx.fillStyle = '#166534';
+                ctx.beginPath();
+                ctx.moveTo(0, 256); ctx.lineTo(140, 60); ctx.lineTo(280, 256);
+                ctx.moveTo(220, 256); ctx.lineTo(390, 45); ctx.lineTo(512, 256);
+                ctx.fill();
+
+                if (variant === 0) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(115, 32, 52, 28);
+                    ctx.fillRect(134, 14, 14, 22);
+                    ctx.fillStyle = '#dc2626';
+                    ctx.fillRect(115, 28, 52, 5);
+                    ctx.fillStyle = '#fef08a';
+                    ctx.font = 'bold 16px sans-serif';
+                    ctx.fillText('MONSERRATE', 90, 95);
+                } else {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(383, 12, 14, 34);
+                    ctx.beginPath();
+                    ctx.moveTo(368, 24); ctx.lineTo(412, 24);
+                    ctx.lineWidth = 5; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+                    ctx.fillStyle = '#e0f2fe';
+                    ctx.font = 'bold 16px sans-serif';
+                    ctx.fillText('CERRO DE GUADALUPE', 300, 88);
+                }
+            } else if (mode === 'centro') {
+                ctx.fillStyle = '#7c2d12';
+                ctx.fillRect(0, 0, 512, 256);
+                for (let y = 0; y < 256; y += 16) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+                    ctx.fillRect(0, y, 512, 2);
+                }
+                if (variant === 0) {
+                    ctx.fillStyle = '#b91c1c';
+                    ctx.fillRect(28, 35, 220, 185);
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillRect(28, 35, 220, 18);
+                    ctx.fillStyle = '#16a34a';
+                    ctx.fillRect(48, 125, 180, 80);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 18px sans-serif';
+                    ctx.fillText('ESTADIO EL CAMPÍN', 52, 82);
+                    ctx.font = 'bold 13px sans-serif';
+                    ctx.fillText('BOGOTÁ • FÚTBOL Y CULTURA', 46, 106);
+                } else {
+                    ctx.fillStyle = '#0f172a';
+                    ctx.fillRect(28, 35, 220, 185);
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.fillRect(38, 45, 200, 165);
+                    ctx.fillStyle = '#78350f';
+                    ctx.font = 'bold 20px sans-serif';
+                    ctx.fillText('MUSEO DEL ORO', 58, 125);
+                    ctx.font = 'bold 13px sans-serif';
+                    ctx.fillText('PARQUE SANTANDER', 66, 152);
+                }
+            } else if (mode === 'colonial') {
+                ctx.fillStyle = variant === 0 ? '#fef3c7' : '#dbeafe';
+                ctx.fillRect(0, 0, 512, 256);
+                ctx.fillStyle = variant === 0 ? '#b91c1c' : '#1d4ed8';
+                ctx.fillRect(0, 180, 512, 76);
+                ctx.fillStyle = '#451a03';
+                ctx.fillRect(40, 65, 95, 115);
+                ctx.fillRect(340, 65, 95, 115);
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillRect(160, 42, 210, 46);
+                ctx.fillStyle = '#1e293b';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.fillText(variant === 0 ? 'CHORRO DE QUEVEDO' : 'LA CANDELARIA', 176, 71);
+            } else {
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(0, 0, 512, 256);
+                ctx.fillStyle = '#38bdf8';
+                for (let x = 24; x < 480; x += 62) {
+                    for (let y = 24; y < 220; y += 54) {
+                        ctx.fillRect(x, y, 42, 34);
+                    }
+                }
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(120, 95, 270, 55);
+                ctx.fillStyle = '#facc15';
+                ctx.font = 'bold 18px sans-serif';
+                ctx.fillText(variant === 0 ? 'PARQUE NACIONAL' : 'ZONA T • PARQUE 93', 155, 129);
+            }
+
+            const tex = new THREE.CanvasTexture(c);
+            return tex;
+        }
+
+        const LANES_4 = [-3.3, -1.1, 1.1, 3.3];
+        const LANES_3 = [-2.4, 0, 2.4];
+
+        const roadMat = new THREE.MeshStandardMaterial({
+            map: createCobbleTexture('#3f3f46', true),
+            roughness: 0.35,
+            metalness: 0.25
+        });
+        const roadMesh = new THREE.Mesh(new THREE.PlaneGeometry(11, 260), roadMat);
+        roadMesh.rotation.x = -Math.PI / 2;
+        roadMesh.position.z = -105;
+        roadMesh.receiveShadow = true;
+        scene.add(roadMesh);
+
+        const canalMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.1, 260),
+            new THREE.MeshStandardMaterial({ color: '#0284c7', roughness: 0.1, metalness: 0.85 })
+        );
+        canalMesh.rotation.x = -Math.PI / 2;
+        canalMesh.position.set(0, 0.02, -105);
+        canalMesh.visible = false;
+        scene.add(canalMesh);
+
+        // --- SUPERFICIE 3D DEL LAGO SIMÓN BOLÍVAR Y LANCHAS DE GONZALO Y MARK ---
+        const lakeWaterMat = new THREE.MeshStandardMaterial({
+            color: '#0284c7',
+            roughness: 0.12,
+            metalness: 0.78,
+            transparent: true,
+            opacity: 0.94
+        });
+        const lakeSurfaceMesh = new THREE.Mesh(new THREE.PlaneGeometry(12.5, 260), lakeWaterMat);
+        lakeSurfaceMesh.rotation.x = -Math.PI / 2;
+        lakeSurfaceMesh.position.set(0, 0.16, -105);
+        lakeSurfaceMesh.visible = false;
+        scene.add(lakeSurfaceMesh);
+
+        function createSpeedBoat3D(hullColor, trimColor) {
+            const boat = new THREE.Group();
+            const hullMat = new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.3, metalness: 0.35 });
+            const trimMat = new THREE.MeshStandardMaterial({ color: trimColor, roughness: 0.4 });
+            const woodMat = new THREE.MeshStandardMaterial({ color: '#78350f', roughness: 0.8 });
+
+            // Casco principal de la lancha
+            const hull = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.38, 2.35), hullMat);
+            hull.position.y = 0.22;
+
+            // Proa afilada delantera
+            const bow = new THREE.Mesh(new THREE.ConeGeometry(0.64, 0.95, 4), hullMat);
+            bow.rotation.x = -Math.PI / 2;
+            bow.rotation.y = Math.PI / 4;
+            bow.scale.set(1.38, 1, 0.42);
+            bow.position.set(0, 0.22, -1.55);
+
+            // Borde superior y cubierta interior
+            const deck = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.12, 2.1), woodMat);
+            deck.position.y = 0.38;
+            const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.1, 2.38), trimMat);
+            stripe.position.y = 0.34;
+
+            // Parabrisas delantero y motor trasero
+            const windshield = new THREE.Mesh(
+                new THREE.BoxGeometry(0.95, 0.28, 0.08),
+                new THREE.MeshStandardMaterial({ color: '#bae6fd', transparent: true, opacity: 0.65 })
+            );
+            windshield.position.set(0, 0.54, -0.55);
+            windshield.rotation.x = 0.4;
+
+            const motor = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.45, 0.35), new THREE.MeshStandardMaterial({ color: '#1e293b' }));
+            motor.position.set(0, 0.38, 1.25);
+
+            // Estela de espuma blanca detrás de la lancha
+            const wake = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.1, 1.8),
+                new THREE.MeshBasicMaterial({ color: '#e0f2fe', transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+            );
+            wake.rotation.x = -Math.PI / 2;
+            wake.position.set(0, 0.06, 2.0);
+
+            boat.add(hull, bow, deck, stripe, windshield, motor, wake);
+            boat.visible = false;
+            return boat;
+        }
+
+        const gonzaloBoatMesh = createSpeedBoat3D('#0284c7', '#facc15');
+        const markBoatMesh = createSpeedBoat3D('#dc2626', '#fef08a');
+        scene.add(gonzaloBoatMesh, markBoatMesh);
+
+        // --- HORIZONTE VOLUMÉTRICO 3D (MONSERRATE Y CERRO DE GUADALUPE) ---
+        const mountainsGroup = new THREE.Group();
+        const hillMat = new THREE.MeshStandardMaterial({ color: '#14532d', roughness: 0.9 });
+        const monserrateHill = new THREE.Mesh(new THREE.ConeGeometry(28, 34, 7), hillMat);
+        monserrateHill.position.set(-22, 14, -145);
+        const sanctuary = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.5, 2.5), new THREE.MeshStandardMaterial({ color: '#ffffff' }));
+        sanctuary.position.set(-22, 31.2, -145);
+
+        const guadalupeHill = new THREE.Mesh(new THREE.ConeGeometry(32, 38, 7), hillMat);
+        guadalupeHill.position.set(24, 16, -150);
+        const virginStatue = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.9, 4.5, 8), new THREE.MeshStandardMaterial({ color: '#ffffff' }));
+        virginStatue.position.set(24, 36.5, -150);
+
+        mountainsGroup.add(monserrateHill, sanctuary, guadalupeHill, virginStatue);
+        scene.add(mountainsGroup);
+
+        // --- EDIFICIOS Y ESCENARIOS LATERALES EN 3D ---
+        const sideBlocks = [];
+        const wallMatA = new THREE.MeshStandardMaterial({ map: createBogotaLandmarkTexture('cerros', 0), roughness: 0.75 });
+        const wallMatB = new THREE.MeshStandardMaterial({ map: createBogotaLandmarkTexture('cerros', 1), roughness: 0.75 });
+
+        function rebuildSideLandmarks(routeIdx) {
+            sideBlocks.forEach(b => scene.remove(b));
+            sideBlocks.length = 0;
+
+            for (let i = 0; i < 24; i++) {
+                const zPos = -i * 8.5 + 8;
+                [-1, 1].forEach((side, sIdx) => {
+                    const grp = new THREE.Group();
+                    const h = 6 + (i % 3) * 2.5;
+                    const mat = (i + sIdx) % 2 === 0 ? wallMatA : wallMatB;
+                    const bldg = new THREE.Mesh(new THREE.BoxGeometry(5.5, h, 7.6), mat);
+                    bldg.position.y = h / 2;
+                    grp.add(bldg);
+
+                    if (routeIdx === 1 && i % 4 === 0 && side === -1) {
+                        const stadiumRing = new THREE.Mesh(
+                            new THREE.CylinderGeometry(4.8, 4.2, 4.2, 16, 1, true),
+                            new THREE.MeshStandardMaterial({ color: '#dc2626', side: THREE.DoubleSide })
+                        );
+                        stadiumRing.position.set(-1.5, 2.1, 0);
+                        const lightTower = new THREE.Mesh(
+                            new THREE.BoxGeometry(0.4, 7.5, 0.4),
+                            new THREE.MeshStandardMaterial({ color: '#e2e8f0' })
+                        );
+                        lightTower.position.set(-0.5, 3.75, 2.5);
+                        const floodLight = new THREE.Mesh(
+                            new THREE.BoxGeometry(1.4, 0.8, 0.6),
+                            new THREE.MeshBasicMaterial({ color: '#fef08a' })
+                        );
+                        floodLight.position.set(-0.5, 7.5, 2.5);
+                        grp.add(stadiumRing, lightTower, floodLight);
+                    } else if (routeIdx === 2) {
+                        const balcony = new THREE.Mesh(
+                            new THREE.BoxGeometry(0.7, 0.9, 3.2),
+                            new THREE.MeshStandardMaterial({ color: '#78350f', roughness: 0.8 })
+                        );
+                        balcony.position.set(side === -1 ? 2.9 : -2.9, 3.4, 0);
+                        const tileRoof = new THREE.Mesh(
+                            new THREE.ConeGeometry(4.6, 1.5, 4),
+                            new THREE.MeshStandardMaterial({ color: '#9a3412', roughness: 0.7 })
+                        );
+                        tileRoof.rotation.y = Math.PI / 4;
+                        tileRoof.position.y = h + 0.75;
+                        grp.add(balcony, tileRoof);
+                    } else if (routeIdx === 0) {
+                        const trunk = new THREE.Mesh(
+                            new THREE.CylinderGeometry(0.25, 0.35, 2.4, 8),
+                            new THREE.MeshStandardMaterial({ color: '#451a03' })
+                        );
+                        trunk.position.set(side === -1 ? 3.2 : -3.2, 1.2, 1.5);
+                        const crown = new THREE.Mesh(
+                            new THREE.ConeGeometry(1.4, 3.2, 8),
+                            new THREE.MeshStandardMaterial({ color: '#15803d' })
+                        );
+                        crown.position.set(side === -1 ? 3.2 : -3.2, 3.2, 1.5);
+                        grp.add(trunk, crown);
+                    } else if (routeIdx === 3) {
+                        // Arboleda y vegetación del Parque Metropolitano Simón Bolívar
+                        const trunk = new THREE.Mesh(
+                            new THREE.CylinderGeometry(0.28, 0.4, 2.6, 8),
+                            new THREE.MeshStandardMaterial({ color: '#5c2d0c' })
+                        );
+                        trunk.position.set(side === -1 ? 3.1 : -3.1, 1.3, 0);
+                        const foliage = new THREE.Mesh(
+                            new THREE.SphereGeometry(1.65, 10, 10),
+                            new THREE.MeshStandardMaterial({ color: '#16a34a' })
+                        );
+                        foliage.position.set(side === -1 ? 3.1 : -3.1, 3.3, 0);
+                        grp.add(trunk, foliage);
+                    }
+
+                    grp.position.set(side * 8.4, 0, zPos);
+                    scene.add(grp);
+                    sideBlocks.push(grp);
+                });
+            }
+        }
+
+        // --- MONUMENTOS DE META 3D POR NIVEL ---
+        const finishGroup = new THREE.Group();
+        scene.add(finishGroup);
+
+        function buildFinishMonument(routeIdx) {
+            while (finishGroup.children.length > 0) finishGroup.remove(finishGroup.children[0]);
+
+            const archMat = new THREE.MeshStandardMaterial({ color: '#f59e0b', metalness: 0.6, roughness: 0.3 });
+            const pillarL = new THREE.Mesh(new THREE.BoxGeometry(0.7, 5.5, 0.7), archMat);
+            pillarL.position.set(-4.6, 2.75, 0);
+            const pillarR = new THREE.Mesh(new THREE.BoxGeometry(0.7, 5.5, 0.7), archMat);
+            pillarR.position.set(4.6, 2.75, 0);
+            const banner = new THREE.Mesh(new THREE.BoxGeometry(10, 1.2, 0.5), new THREE.MeshStandardMaterial({ color: '#0284c7' }));
+            banner.position.set(0, 5.4, 0);
+            finishGroup.add(pillarL, pillarR, banner);
+
+            if (routeIdx === 0) {
+                const goldBldg = new THREE.Mesh(new THREE.BoxGeometry(9, 7, 4), new THREE.MeshStandardMaterial({ color: '#d97706', metalness: 0.7, roughness: 0.25 }));
+                goldBldg.position.set(0, 3.5, -5);
+                finishGroup.add(goldBldg);
+            } else if (routeIdx === 1) {
+                const tower = new THREE.Mesh(new THREE.BoxGeometry(4.5, 22, 4.5), new THREE.MeshStandardMaterial({ color: '#0f172a', emissive: '#f59e0b', emissiveIntensity: 0.45 }));
+                tower.position.set(0, 11, -7);
+                finishGroup.add(tower);
+            } else if (routeIdx === 2) {
+                const capitol = new THREE.Mesh(new THREE.BoxGeometry(11, 6, 4), new THREE.MeshStandardMaterial({ color: '#d6d3d1', roughness: 0.8 }));
+                capitol.position.set(0, 3, -6);
+                for (let cx = -4; cx <= 4; cx += 2) {
+                    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 5, 12), new THREE.MeshStandardMaterial({ color: '#e7e5e4' }));
+                    col.position.set(cx, 2.5, -3.8);
+                    finishGroup.add(col);
+                }
+                finishGroup.add(capitol);
+            } else {
+                const treeMat = new THREE.MeshStandardMaterial({ color: '#15803d' });
+                for (let tx = -4; tx <= 4; tx += 4) {
+                    const tree = new THREE.Mesh(new THREE.SphereGeometry(1.8, 12, 12), treeMat);
+                    tree.position.set(tx, 3.2, -5);
+                    finishGroup.add(tree);
+                }
+            }
+        }
+
+        // --- MODELOS 3D DE GONZALO Y MARK ARENA CON PERSONALIZACIÓN ---
+        const WARDROBE_OPTIONS = {
+            top: ['#1e3a8a', '#dc2626', '#16a34a', '#7c3aed', '#f59e0b', '#64748b'],
+            pants: ['#1e293b', '#1d4ed8', '#0f172a', '#78350f', '#3f6212'],
+            hat: ['beanie', 'cap', 'santafereño', 'none'],
+            shoes: ['#e2e8f0', '#ef4444', '#451a03', '#facc15', '#0f172a'],
+            glasses: ['none', 'dark', 'round'],
+            bag: ['brown', 'red', 'cyan', 'purple'],
+            pet: [
+                { id: 'criollo', label: '🐶 Perrito Criollo', bodyColor: '#d97706', earColor: '#78350f', scale: 0.95, type: 'dog' },
+                { id: 'husky', label: '🐕 Perrito Husky', bodyColor: '#e2e8f0', earColor: '#334155', scale: 1.05, type: 'dog' },
+                { id: 'salchicha', label: '🌭 Perrito Pequeño', bodyColor: '#7c2d12', earColor: '#451a03', scale: 0.75, type: 'dog' },
+                { id: 'gato', label: '🐱 Gatico Bogotano', bodyColor: '#f97316', earColor: '#ea580c', scale: 0.85, type: 'cat' },
+                { id: 'paloma', label: '🕊️ Paloma Plaza', bodyColor: '#cbd5e1', earColor: '#64748b', scale: 0.85, type: 'bird' }
+            ]
+        };
+
+        const customState = {
+            gonzalo: { top: 0, pants: 0, hat: 0, shoes: 0, glasses: 0, bag: 0, pet: 0 },
+            mark: { top: 5, pants: 2, hat: 2, shoes: 2, glasses: 1, bag: 1, pet: 1 }
+        };
+
+        function createGonzalo() {
+            const g = new THREE.Group();
+            const skin = new THREE.MeshStandardMaterial({ color: '#ffedd5', roughness: 0.45 });
+            const jacketMat = new THREE.MeshStandardMaterial({ color: '#1e3a8a', roughness: 0.35 });
+            const beanieMat = new THREE.MeshStandardMaterial({ color: '#0284c7', roughness: 0.85 });
+            const jeansMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.8 });
+            const bagMat = new THREE.MeshStandardMaterial({ color: '#92400e', roughness: 0.75 });
+            const shoeMat = new THREE.MeshStandardMaterial({ color: '#e2e8f0', roughness: 0.6 });
+
+            // Cuerpo estilo caricatura 3D (cabeza grande expresiva y torso redondeado)
+            const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.76, 16), jacketMat);
+            torso.position.y = 0.98;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 20, 20), skin);
+            head.position.y = 1.66;
+
+            // Ojos grandes de caricatura, mejillas y sonrisa
+            const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+            const pupilMat = new THREE.MeshBasicMaterial({ color: '#0f172a' });
+            const cheekMat = new THREE.MeshBasicMaterial({ color: '#fda4af' });
+
+            const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 12), eyeWhiteMat);
+            eyeL.position.set(-0.11, 1.69, -0.27);
+            const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.038, 10, 10), pupilMat);
+            pupilL.position.set(-0.11, 1.69, -0.32);
+
+            const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 12), eyeWhiteMat);
+            eyeR.position.set(0.11, 1.69, -0.27);
+            const pupilR = new THREE.Mesh(new THREE.SphereGeometry(0.038, 10, 10), pupilMat);
+            pupilR.position.set(0.11, 1.69, -0.32);
+
+            const cheekL = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), cheekMat);
+            cheekL.position.set(-0.18, 1.61, -0.25);
+            const cheekR = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), cheekMat);
+            cheekR.position.set(0.18, 1.61, -0.25);
+
+            const smile = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.015, 8, 12, Math.PI), new THREE.MeshBasicMaterial({ color: '#be123c' }));
+            smile.rotation.z = Math.PI;
+            smile.position.set(0, 1.59, -0.3);
+
+            // Brazos animados
+            const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.55, 12), jacketMat);
+            armL.position.set(-0.38, 1.05, 0);
+            armL.rotation.z = 0.2;
+            const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.55, 12), jacketMat);
+            armR.position.set(0.38, 1.05, 0);
+            armR.rotation.z = -0.2;
+
+            // Sombreros / Gorras intercambiables adaptados a cabeza cartoon
+            const hatBeanie = new THREE.Mesh(new THREE.SphereGeometry(0.335, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.56), beanieMat);
+            hatBeanie.position.y = 1.71;
+            const hatCap = new THREE.Group();
+            const capDome = new THREE.Mesh(new THREE.SphereGeometry(0.33, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.54), new THREE.MeshStandardMaterial({ color: '#ef4444' }));
+            const capVisor = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.3), new THREE.MeshStandardMaterial({ color: '#1e293b' }));
+            capVisor.position.set(0, 0.02, -0.3);
+            hatCap.add(capDome, capVisor);
+            hatCap.position.y = 1.71;
+            hatCap.visible = false;
+
+            const hatSantafereño = new THREE.Group();
+            const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.04, 20), new THREE.MeshStandardMaterial({ color: '#fef3c7' }));
+            const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.22, 20), new THREE.MeshStandardMaterial({ color: '#fef3c7' }));
+            crown.position.y = 0.11;
+            const ribbon = new THREE.Mesh(new THREE.CylinderGeometry(0.305, 0.305, 0.06, 20), new THREE.MeshStandardMaterial({ color: '#1e293b' }));
+            ribbon.position.y = 0.05;
+            hatSantafereño.add(brim, crown, ribbon);
+            hatSantafereño.position.y = 1.9;
+            hatSantafereño.visible = false;
+
+            // Gafas
+            const glassesGroup = new THREE.Group();
+            const glassMat = new THREE.MeshStandardMaterial({ color: '#0f172a', metalness: 0.8, roughness: 0.1 });
+            const lensL = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.04), glassMat);
+            lensL.position.set(-0.11, 1.69, -0.32);
+            const lensR = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.04), glassMat);
+            lensR.position.set(0.11, 1.69, -0.32);
+            glassesGroup.add(lensL, lensR);
+            glassesGroup.visible = false;
+
+            const shoulderBag = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.54, 0.26), bagMat);
+            shoulderBag.position.set(0, 1.02, 0.3);
+
+            const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.62, 12), jeansMat);
+            legL.position.set(-0.16, 0.35, 0);
+            const shoeL = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.15, 0.36), shoeMat);
+            shoeL.position.set(0, -0.31, -0.05);
+            legL.add(shoeL);
+
+            const legR = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.62, 12), jeansMat);
+            legR.position.set(0.16, 0.35, 0);
+            const shoeR = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.15, 0.36), shoeMat);
+            shoeR.position.set(0, -0.31, -0.05);
+            legR.add(shoeR);
+
+            g.add(torso, head, eyeL, pupilL, eyeR, pupilR, cheekL, cheekR, smile, armL, armR, hatBeanie, hatCap, hatSantafereño, glassesGroup, shoulderBag, legL, legR);
+            g.userData = { legL, legR, armL, armR, jacketMat, jeansMat, shoeMat, bagMat, hatBeanie, hatCap, hatSantafereño, glassesGroup, glassMat };
+            return g;
+        }
+
+        function createMarkArena() {
+            const m = new THREE.Group();
+            const skin = new THREE.MeshStandardMaterial({ color: '#fde68a', roughness: 0.45 });
+            const coatMat = new THREE.MeshStandardMaterial({ color: '#64748b', roughness: 0.85 });
+            const scarf = new THREE.MeshStandardMaterial({ color: '#d97706', roughness: 0.9 });
+            const pantsMat = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.75 });
+            const bootsMat = new THREE.MeshStandardMaterial({ color: '#451a03', roughness: 0.45 });
+            const bagMat = new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.7 });
+
+            // Cuerpo estilo caricatura 3D expresiva
+            const coatMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.36, 0.78, 16), coatMat);
+            coatMesh.position.y = 0.98;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 20, 20), skin);
+            head.position.y = 1.66;
+
+            // Ojos grandes expresivos, mejillas y sonrisa
+            const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+            const pupilMat = new THREE.MeshBasicMaterial({ color: '#0f172a' });
+            const cheekMat = new THREE.MeshBasicMaterial({ color: '#fb7185' });
+
+            const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.068, 12, 12), eyeWhiteMat);
+            eyeL.position.set(-0.11, 1.69, -0.26);
+            const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 10), pupilMat);
+            pupilL.position.set(-0.11, 1.69, -0.31);
+
+            const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.068, 12, 12), eyeWhiteMat);
+            eyeR.position.set(0.11, 1.69, -0.26);
+            const pupilR = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 10), pupilMat);
+            pupilR.position.set(0.11, 1.69, -0.31);
+
+            const cheekL = new THREE.Mesh(new THREE.SphereGeometry(0.048, 8, 8), cheekMat);
+            cheekL.position.set(-0.18, 1.61, -0.24);
+            const cheekR = new THREE.Mesh(new THREE.SphereGeometry(0.048, 8, 8), cheekMat);
+            cheekR.position.set(0.18, 1.61, -0.24);
+
+            const smile = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.015, 8, 12, Math.PI), new THREE.MeshBasicMaterial({ color: '#e11d48' }));
+            smile.rotation.z = Math.PI;
+            smile.position.set(0, 1.59, -0.29);
+
+            // Brazos animados
+            const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.54, 12), coatMat);
+            armL.position.set(-0.37, 1.05, 0);
+            armL.rotation.z = 0.22;
+            const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.54, 12), coatMat);
+            armR.position.set(0.37, 1.05, 0);
+            armR.rotation.z = -0.22;
+
+            // Cabello largo y coletas caricaturescas
+            const hair = new THREE.Mesh(new THREE.SphereGeometry(0.33, 18, 18), new THREE.MeshStandardMaterial({ color: '#292524' }));
+            hair.position.set(0, 1.72, 0.06);
+            const ponytailL = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), new THREE.MeshStandardMaterial({ color: '#292524' }));
+            ponytailL.position.set(-0.33, 1.62, 0.08);
+            const ponytailR = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), new THREE.MeshStandardMaterial({ color: '#292524' }));
+            ponytailR.position.set(0.33, 1.62, 0.08);
+
+            // Sombreros / Gorras intercambiables
+            const hatBeanie = new THREE.Mesh(new THREE.SphereGeometry(0.335, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.56), new THREE.MeshStandardMaterial({ color: '#ec4899' }));
+            hatBeanie.position.y = 1.72;
+            hatBeanie.visible = false;
+
+            const hatCap = new THREE.Group();
+            const capDome = new THREE.Mesh(new THREE.SphereGeometry(0.33, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.54), new THREE.MeshStandardMaterial({ color: '#f59e0b' }));
+            const capVisor = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.3), new THREE.MeshStandardMaterial({ color: '#0f172a' }));
+            capVisor.position.set(0, 0.02, -0.3);
+            hatCap.add(capDome, capVisor);
+            hatCap.position.y = 1.72;
+            hatCap.visible = false;
+
+            const hatSantafereño = new THREE.Group();
+            const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.04, 20), new THREE.MeshStandardMaterial({ color: '#fef3c7' }));
+            const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.22, 20), new THREE.MeshStandardMaterial({ color: '#fef3c7' }));
+            crown.position.y = 0.11;
+            const ribbon = new THREE.Mesh(new THREE.CylinderGeometry(0.305, 0.305, 0.06, 20), new THREE.MeshStandardMaterial({ color: '#dc2626' }));
+            ribbon.position.y = 0.05;
+            hatSantafereño.add(brim, crown, ribbon);
+            hatSantafereño.position.y = 1.9;
+
+            // Gafas
+            const glassesGroup = new THREE.Group();
+            const glassMat = new THREE.MeshStandardMaterial({ color: '#0f172a', metalness: 0.8, roughness: 0.1 });
+            const lensL = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.04), glassMat);
+            lensL.position.set(-0.11, 1.69, -0.31);
+            const lensR = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.04), glassMat);
+            lensR.position.set(0.11, 1.69, -0.31);
+            glassesGroup.add(lensL, lensR);
+
+            const scarfNeck = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.08, 10, 18), scarf);
+            scarfNeck.rotation.x = Math.PI / 2;
+            scarfNeck.position.y = 1.38;
+            const scarfTail = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.48, 0.06), scarf);
+            scarfTail.position.set(0.2, 1.18, 0.28);
+            scarfTail.rotation.x = 0.35;
+
+            const crossbody = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.5, 0.26), bagMat);
+            crossbody.position.set(0, 1.0, 0.3);
+
+            const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.6, 12), pantsMat);
+            legL.position.set(-0.16, 0.34, 0);
+            const bootL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.22, 0.35), bootsMat);
+            bootL.position.set(0, -0.28, -0.04);
+            legL.add(bootL);
+
+            const legR = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.6, 12), pantsMat);
+            legR.position.set(0.16, 0.34, 0);
+            const bootR = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.22, 0.35), bootsMat);
+            bootR.position.set(0, -0.28, -0.04);
+            legR.add(bootR);
+
+            m.add(coatMesh, head, eyeL, pupilL, eyeR, pupilR, cheekL, cheekR, smile, armL, armR, hair, ponytailL, ponytailR, hatBeanie, hatCap, hatSantafereño, glassesGroup, scarfNeck, scarfTail, crossbody, legL, legR);
+            m.userData = { legL, legR, armL, armR, scarfTail, jacketMat: coatMat, jeansMat: pantsMat, shoeMat: bootsMat, bagMat, hatBeanie, hatCap, hatSantafereño, glassesGroup, glassMat };
+            return m;
+        }
+
+        // --- MODELOS 3D DE MASCOTAS ACOMPAÑANTES ---
+        function createPetMesh(petConfig) {
+            const grp = new THREE.Group();
+            const bodyMat = new THREE.MeshStandardMaterial({ color: petConfig.bodyColor, roughness: 0.7 });
+            const earMat = new THREE.MeshStandardMaterial({ color: petConfig.earColor, roughness: 0.8 });
+
+            if (petConfig.type === 'bird') {
+                const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), bodyMat);
+                body.position.y = 0.35;
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 12), bodyMat);
+                head.position.set(0, 0.54, -0.14);
+                const beak = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 8), new THREE.MeshStandardMaterial({ color: '#f59e0b' }));
+                beak.rotation.x = -Math.PI / 2;
+                beak.position.set(0, 0.53, -0.28);
+                const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.04, 0.18), earMat);
+                wingL.position.set(-0.22, 0.38, 0);
+                const wingR = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.04, 0.18), earMat);
+                wingR.position.set(0.22, 0.38, 0);
+                grp.add(body, head, beak, wingL, wingR);
+                grp.userData = { legFL: wingL, legFR: wingR, tail: body, isBird: true };
+            } else {
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.24, 0.48), bodyMat);
+                body.position.y = 0.28;
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.24), bodyMat);
+                head.position.set(0, 0.44, -0.24);
+                const earL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 0.07), earMat);
+                earL.position.set(-0.08, 0.57, -0.22);
+                const earR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 0.07), earMat);
+                earR.position.set(0.08, 0.57, -0.22);
+                const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.06), earMat);
+                tail.position.set(0, 0.42, 0.25);
+                tail.rotation.x = -0.5;
+
+                const legFL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.07), earMat);
+                legFL.position.set(-0.09, 0.1, -0.15);
+                const legFR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.07), earMat);
+                legFR.position.set(0.09, 0.1, -0.15);
+                const legBL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.07), earMat);
+                legBL.position.set(-0.09, 0.1, 0.15);
+                const legBR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.07), earMat);
+                legBR.position.set(0.09, 0.1, 0.15);
+
+                grp.add(body, head, earL, earR, tail, legFL, legFR, legBL, legBR);
+                grp.userData = { legFL, legFR, legBL, legBR, tail, isBird: false };
+            }
+            grp.scale.setScalar(petConfig.scale);
+            return grp;
+        }
+
+        const gonzaloMesh = createGonzalo();
+        const markMesh = createMarkArena();
+        scene.add(gonzaloMesh, markMesh);
+
+        let gonzaloPetMesh = createPetMesh(WARDROBE_OPTIONS.pet[0]);
+        let markPetMesh = createPetMesh(WARDROBE_OPTIONS.pet[1]);
+        scene.add(gonzaloPetMesh, markPetMesh);
+        let petCelebrateTimerG = 0;
+        let petCelebrateTimerM = 0;
+
+        function applyCustomization(who) {
+            const isG = who === 'gonzalo';
+            const cfg = customState[who];
+            const mesh = isG ? gonzaloMesh : markMesh;
+            const ud = mesh.userData;
+
+            ud.jacketMat.color.set(WARDROBE_OPTIONS.top[cfg.top]);
+            ud.jeansMat.color.set(WARDROBE_OPTIONS.pants[cfg.pants]);
+            ud.shoeMat.color.set(WARDROBE_OPTIONS.shoes[cfg.shoes]);
+
+            const bagColors = { brown: '#92400e', red: '#dc2626', cyan: '#0891b2', purple: '#7e22ce' };
+            ud.bagMat.color.set(bagColors[WARDROBE_OPTIONS.bag[cfg.bag]]);
+
+            const hatType = WARDROBE_OPTIONS.hat[cfg.hat];
+            ud.hatBeanie.visible = (hatType === 'beanie');
+            ud.hatCap.visible = (hatType === 'cap');
+            ud.hatSantafereño.visible = (hatType === 'santafereño');
+
+            const glassType = WARDROBE_OPTIONS.glasses[cfg.glasses];
+            ud.glassesGroup.visible = (glassType !== 'none');
+            if (glassType === 'dark') ud.glassMat.color.set('#0f172a');
+            if (glassType === 'round') ud.glassMat.color.set('#0284c7');
+
+            const petCfg = WARDROBE_OPTIONS.pet[cfg.pet];
+            const newPet = createPetMesh(petCfg);
+            if (isG) {
+                newPet.position.copy(gonzaloPetMesh.position);
+                newPet.rotation.copy(gonzaloPetMesh.rotation);
+                newPet.visible = gonzaloPetMesh.visible;
+                scene.remove(gonzaloPetMesh);
+                gonzaloPetMesh = newPet;
+                scene.add(gonzaloPetMesh);
+            } else {
+                newPet.position.copy(markPetMesh.position);
+                newPet.rotation.copy(markPetMesh.rotation);
+                newPet.visible = markPetMesh.visible;
+                scene.remove(markPetMesh);
+                markPetMesh = newPet;
+                scene.add(markPetMesh);
+            }
+        }
+
+        // Sala de Personalización 3D (Protagonista Centrado y Cuerpo Completo)
+        let inWardrobe = false;
+        let activeWardrobeChar = 'gonzalo';
+        const wardrobeRoomGroup = new THREE.Group();
+        const centerPedestal = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.5, 1.7, 0.24, 32),
+            new THREE.MeshStandardMaterial({ color: '#0284c7', metalness: 0.35, roughness: 0.3 })
+        );
+        centerPedestal.position.set(0, 0.12, 0);
+        const pedestalRing = new THREE.Mesh(
+            new THREE.TorusGeometry(1.52, 0.05, 12, 36),
+            new THREE.MeshBasicMaterial({ color: '#facc15' })
+        );
+        pedestalRing.rotation.x = Math.PI / 2;
+        pedestalRing.position.set(0, 0.24, 0);
+
+        const backdropRoom = new THREE.Mesh(
+            new THREE.PlaneGeometry(18, 9),
+            new THREE.MeshStandardMaterial({ color: '#1e1b4b', roughness: 0.85 })
+        );
+        backdropRoom.position.set(0, 3.8, -4.5);
+        wardrobeRoomGroup.add(centerPedestal, pedestalRing, backdropRoom);
+        wardrobeRoomGroup.visible = false;
+        scene.add(wardrobeRoomGroup);
+
+        function showWardrobeCharacter(who) {
+            activeWardrobeChar = who;
+            const isG = who === 'gonzalo';
+
+            // El personaje elegido va justo en el CENTRO de la pantalla, de cuerpo completo
+            gonzaloMesh.visible = isG;
+            gonzaloPetMesh.visible = isG;
+            markMesh.visible = !isG;
+            markPetMesh.visible = !isG;
+
+            const charMesh = isG ? gonzaloMesh : markMesh;
+            const petMesh = isG ? gonzaloPetMesh : markPetMesh;
+
+            charMesh.position.set(-0.22, 0.24, 0);
+            charMesh.rotation.set(0, Math.PI, 0);
+            charMesh.scale.setScalar(1.08);
+
+            petMesh.position.set(0.68, 0.24, 0.15);
+            petMesh.rotation.set(0, Math.PI, 0);
+
+            centerPedestal.material.color.set(isG ? '#0284c7' : '#d97706');
+
+            // Actualizar pestañas visuales
+            const btnG = document.getElementById('select-char-gonzalo');
+            const btnM = document.getElementById('select-char-mark');
+            if (isG) {
+                btnG.className = "px-4 py-2 rounded-xl bg-sky-500 text-white font-black text-xs sm:text-sm shadow-lg border-2 border-white transition cursor-pointer";
+                btnM.className = "px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-black text-xs sm:text-sm border border-white/20 transition cursor-pointer";
+            } else {
+                btnM.className = "px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-black text-xs sm:text-sm shadow-lg border-2 border-white transition cursor-pointer";
+                btnG.className = "px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-black text-xs sm:text-sm border border-white/20 transition cursor-pointer";
+            }
+
+            const petCfg = WARDROBE_OPTIONS.pet[customState[who].pet];
+            document.getElementById('active-pet-btn').innerText = petCfg.label;
+        }
+
+        function enterWardrobeRoom() {
+            inWardrobe = true;
+            state.running = false;
+            wardrobeRoomGroup.visible = true;
+
+            applyCustomization('gonzalo');
+            applyCustomization('mark');
+            showWardrobeCharacter('gonzalo');
+
+            scene.background = new THREE.Color('#312e81');
+            scene.fog = new THREE.FogExp2('#312e81', 0.015);
+            // Cámara encuadrando de cuerpo entero al personaje en el centro
+            camera.position.set(0, 1.45, 4.6);
+            camera.lookAt(0, 1.15, 0);
+        }
+
+        document.getElementById('select-char-gonzalo').addEventListener('click', () => showWardrobeCharacter('gonzalo'));
+        document.getElementById('select-char-mark').addEventListener('click', () => showWardrobeCharacter('mark'));
+
+        document.querySelectorAll('.wardrobe-active-cycle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const part = btn.getAttribute('data-part');
+                const list = WARDROBE_OPTIONS[part];
+                customState[activeWardrobeChar][part] = (customState[activeWardrobeChar][part] + 1) % list.length;
+                applyCustomization(activeWardrobeChar);
+                if (part === 'pet') {
+                    const petCfg = WARDROBE_OPTIONS.pet[customState[activeWardrobeChar].pet];
+                    document.getElementById('active-pet-btn').innerText = petCfg.label;
+                }
+            });
+        });
+
+        // Auras protectoras independientes por corredor
+        const shieldRingMatG = new THREE.MeshBasicMaterial({ color: '#facc15', wireframe: true, transparent: true, opacity: 0 });
+        const shieldG = new THREE.Mesh(new THREE.SphereGeometry(1.15, 14, 14), shieldRingMatG);
+        shieldG.position.y = 1.1;
+        gonzaloMesh.add(shieldG);
+
+        const shieldRingMatM = new THREE.MeshBasicMaterial({ color: '#38bdf8', wireframe: true, transparent: true, opacity: 0 });
+        const shieldM = new THREE.Mesh(new THREE.SphereGeometry(1.15, 14, 14), shieldRingMatM);
+        shieldM.position.y = 1.1;
+        markMesh.add(shieldM);
+
+        // --- ESTADO GLOBAL DEL JUEGO (Con Habilidades Individuales) ---
+        function createDefaultBuffs() {
+            return {
+                speed: 0,
+                jump: 0,
+                shield: 0,
+                bonus: 0,
+                magnet: 0
+            };
+        }
+
+        let state = {
+            running: false,
+            routeIdx: 0,
+            inLake: false,
+            lakeToastShown: false,
+            lakeExitToastShown: false,
+            score: 0,
+            distance: 0,
+            combo: 1,
+            maxCombo: 1,
+            syncCount: 0,
+            energy: 50,
+            sprintTimer: 0,
+            stumbleTimer: 0,
+            lastJumpGonzalo: 0,
+            lastJumpMark: 0,
+            syncAwardedThisJump: false,
+            gonzalo: { lane: 1, y: 0, vy: 0, jumping: false, fallingHole: false, relayed: false, alive: true, buffs: createDefaultBuffs() },
+            mark: { lane: 2, y: 0, vy: 0, jumping: false, fallingHole: false, relayed: false, alive: true, buffs: createDefaultBuffs() }
+        };
+
+        let obstacles = [];
+        let collectibles = [];
+        let pickupBursts = [];
+        let spawnTimer = 0;
+
+        function getActiveLanes() {
+            return ROUTES[state.routeIdx].lanesCount === 3 ? LANES_3 : LANES_4;
+        }
+
+        // --- CONFIGURACIÓN DE RUTA ---
+        function loadRoute(idx) {
+            state.routeIdx = idx;
+            const r = ROUTES[idx];
+            state.distance = 0;
+            state.inLake = false;
+            state.lakeToastShown = false;
+            state.lakeExitToastShown = false;
+            state.sprintTimer = 0;
+            state.stumbleTimer = 0;
+
+            sfx.setGenre(idx);
+
+            const isColonial = r.lanesCount === 3;
+            state.gonzalo = { lane: isColonial ? 0 : 1, y: 0, vy: 0, jumping: false, fallingHole: false, relayed: false, alive: true, buffs: createDefaultBuffs() };
+            state.mark = { lane: isColonial ? 2 : 2, y: 0, vy: 0, jumping: false, fallingHole: false, relayed: false, alive: true, buffs: createDefaultBuffs() };
+
+            gonzaloMesh.visible = true;
+            markMesh.visible = true;
+            gonzaloPetMesh.visible = true;
+            markPetMesh.visible = true;
+            gonzaloBoatMesh.visible = false;
+            markBoatMesh.visible = false;
+            lakeSurfaceMesh.visible = false;
+            gonzaloMesh.rotation.set(0, 0, 0);
+            markMesh.rotation.set(0, 0, 0);
+            gonzaloPetMesh.rotation.set(0, 0, 0);
+            markPetMesh.rotation.set(0, 0, 0);
+
+            obstacles.forEach(o => scene.remove(o.mesh));
+            collectibles.forEach(c => scene.remove(c.mesh));
+            pickupBursts.forEach(b => scene.remove(b.mesh));
+            obstacles = [];
+            collectibles = [];
+            pickupBursts = [];
+            spawnTimer = 0;
+
+            scene.background = new THREE.Color(r.skyStart);
+            scene.fog = new THREE.FogExp2(r.skyStart, r.fogDensity);
+            roadMat.map = createCobbleTexture(r.groundColor, r.id === 1);
+            roadMat.needsUpdate = true;
+            canalMesh.visible = !!r.hasCanal;
+
+            wallMatA.map = createBogotaLandmarkTexture(r.wallMode, 0);
+            wallMatB.map = createBogotaLandmarkTexture(r.wallMode, 1);
+            wallMatA.needsUpdate = true;
+            wallMatB.needsUpdate = true;
+
+            rebuildSideLandmarks(idx);
+            buildFinishMonument(idx);
+
+            document.getElementById('route-start').innerText = r.startName;
+            document.getElementById('route-name').innerText = r.levelLabel;
+            document.getElementById('route-end').innerText = r.endName;
+            document.getElementById('music-genre-label').innerText = r.genreLabel;
+            document.getElementById('pigeon-overlay').classList.add('hidden');
+            updateHUD();
+        }
+
+        // --- MODELO 3D DE HUECO PROFUNDO EN LA VÍA ---
+        function createRoadHole3D() {
+            const grp = new THREE.Group();
+            // Abertura profunda oscura en el asfalto
+            const pit = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.82, 0.65, 0.25, 18),
+                new THREE.MeshBasicMaterial({ color: '#020617' })
+            );
+            pit.position.y = 0.02;
+
+            // Aro de tierra/asfalto fracturado alrededor del hueco
+            const rim = new THREE.Mesh(
+                new THREE.RingGeometry(0.78, 1.02, 18),
+                new THREE.MeshStandardMaterial({ color: '#451a03', roughness: 0.95, side: THREE.DoubleSide })
+            );
+            rim.rotation.x = -Math.PI / 2;
+            rim.position.y = 0.03;
+
+            // Señal preventiva amarilla/negra al borde del hueco
+            const cone = new THREE.Mesh(
+                new THREE.ConeGeometry(0.16, 0.42, 8),
+                new THREE.MeshStandardMaterial({ color: '#facc15', emissive: '#ca8a04', emissiveIntensity: 0.3 })
+            );
+            cone.position.set(0.88, 0.21, 0.55);
+
+            grp.add(pit, rim, cone);
+            return grp;
+        }
+
+        // --- SPAWNER DE OBSTÁCULOS, HUECOS 3D Y GASTRONOMÍA / HABILIDADES ---
+        function spawnEntity() {
+            const lanes = getActiveLanes();
+            const laneIdx = Math.floor(Math.random() * lanes.length);
+            const xPos = lanes[laneIdx];
+            const zPos = -115;
+            const progress = state.distance / ROUTES[state.routeIdx].length;
+
+            // Probabilidad progresiva de huecos en el camino (22% al inicio hasta 38% al final)
+            const holeChance = 0.22 + progress * 0.16;
+
+            // --- OBSTÁCULOS Y PREMIOS DEL LAGO PARQUE SIMÓN BOLÍVAR (EN LANCHA) ---
+            if (state.inLake) {
+                const isExitGauntlet = progress > 0.62;
+                if (Math.random() < (isExitGauntlet ? 0.68 : 0.56)) {
+                    const grp = new THREE.Group();
+                    let type = 'boya';
+                    let height = 1.05;
+                    const pick = Math.random();
+
+                    if (pick < 0.3) {
+                        type = 'boya'; height = 1.05;
+                        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 0.3, 14), new THREE.MeshStandardMaterial({ color: '#dc2626' }));
+                        base.position.y = 0.2;
+                        const top = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 12), new THREE.MeshStandardMaterial({ color: '#facc15', emissive: '#ca8a04', emissiveIntensity: 0.35 }));
+                        top.position.y = 0.52;
+                        grp.add(base, top);
+                    } else if (pick < 0.6) {
+                        type = 'tronco'; height = 0.72;
+                        const log = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 1.75, 10), new THREE.MeshStandardMaterial({ color: '#78350f', roughness: 0.9 }));
+                        log.rotation.z = Math.PI / 2;
+                        log.position.y = 0.22;
+                        grp.add(log);
+                    } else if (pick < 0.82) {
+                        type = 'roca'; height = 1.15;
+                        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.68, 0), new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.95 }));
+                        rock.position.y = 0.42;
+                        grp.add(rock);
+                    } else {
+                        type = 'isla'; height = 1.5;
+                        const sand = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.95, 0.35, 12), new THREE.MeshStandardMaterial({ color: '#15803d' }));
+                        sand.position.y = 0.22;
+                        const palm = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.3, 8), new THREE.MeshStandardMaterial({ color: '#166534' }));
+                        palm.position.y = 0.95;
+                        grp.add(sand, palm);
+                    }
+
+                    grp.position.set(xPos, 0.1, zPos);
+                    scene.add(grp);
+                    obstacles.push({ mesh: grp, lane: laneIdx, type, height });
+                } else {
+                    const isPower = Math.random() > 0.72;
+                    const category = isPower ? 'power' : 'food';
+                    const subType = isPower
+                        ? ['speed', 'jump', 'shield', 'bonus', 'magnet'][Math.floor(Math.random() * 5)]
+                        : ['bunuelo', 'changua', 'arepa', 'empanada', 'almojabana'][Math.floor(Math.random() * 5)];
+                    const yPos = 1.15;
+                    const mesh = createColombianCollectibleMesh(category, subType);
+                    mesh.position.set(xPos, yPos, zPos);
+                    scene.add(mesh);
+                    collectibles.push({ mesh, lane: laneIdx, category, subType, yPos });
+                }
+                return;
+            }
+
+            if (Math.random() < holeChance) {
+                const holeMesh = createRoadHole3D();
+                holeMesh.position.set(xPos, 0, zPos);
+                scene.add(holeMesh);
+                obstacles.push({ mesh: holeMesh, lane: laneIdx, type: 'hueco', height: 0.25 });
+
+                // Premio opcional sobre el hueco para incentivar el salto
+                if (Math.random() < 0.45) {
+                    const foods = ['bunuelo', 'empanada', 'arepa'];
+                    const fType = foods[Math.floor(Math.random() * foods.length)];
+                    const rewardMesh = createColombianCollectibleMesh('food', fType);
+                    rewardMesh.position.set(xPos, 2.2, zPos);
+                    scene.add(rewardMesh);
+                    collectibles.push({ mesh: rewardMesh, lane: laneIdx, category: 'food', subType: fType, yPos: 2.2 });
+                }
+                return;
+            }
+
+            if (Math.random() < 0.52) {
+                let type = 'bolardo';
+                let height = 1.0;
+                const grp = new THREE.Group();
+
+                if (state.routeIdx === 0) {
+                    if (progress > 0.45 && progress < 0.68) {
+                        type = 'teleferico';
+                        height = 1.3;
+                        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.5, 2.8), new THREE.MeshStandardMaterial({ color: '#dc2626', metalness: 0.4 }));
+                        cabin.position.y = 0.75;
+                        grp.add(cabin);
+                    } else {
+                        const r0 = Math.random();
+                        if (r0 < 0.35) {
+                            type = 'turista'; height = 1.4;
+                            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 1.45, 10), new THREE.MeshStandardMaterial({ color: '#0284c7' }));
+                            body.position.y = 0.72;
+                            grp.add(body);
+                        } else if (r0 < 0.7) {
+                            type = 'escalon'; height = 0.75;
+                            const step = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.65, 1.2), new THREE.MeshStandardMaterial({ color: '#78716c' }));
+                            step.position.y = 0.32;
+                            grp.add(step);
+                        } else {
+                            type = 'charco'; height = 0.15;
+                            const puddle = new THREE.Mesh(new THREE.CircleGeometry(0.85, 16), new THREE.MeshStandardMaterial({ color: '#38bdf8', roughness: 0.05, metalness: 0.85 }));
+                            puddle.rotation.x = -Math.PI / 2;
+                            puddle.position.y = 0.03;
+                            grp.add(puddle);
+                        }
+                    }
+                } else if (state.routeIdx === 1) {
+                    const r1 = Math.random();
+                    if (r1 < 0.28) {
+                        type = 'transmilenio'; height = 1.8;
+                        const bus = new THREE.Mesh(new THREE.BoxGeometry(1.85, 2.2, 4.8), new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.3 }));
+                        bus.position.y = 1.1;
+                        grp.add(bus);
+                    } else if (r1 < 0.55) {
+                        type = 'ciclista'; height = 1.3;
+                        const bike = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.25, 1.6), new THREE.MeshStandardMaterial({ color: '#eab308' }));
+                        bike.position.y = 0.62;
+                        grp.add(bike);
+                    } else if (r1 < 0.78) {
+                        type = 'estatua'; height = 1.45;
+                        const statue = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.42, 1.55, 12), new THREE.MeshStandardMaterial({ color: '#cbd5e1', metalness: 0.8 }));
+                        statue.position.y = 0.77;
+                        grp.add(statue);
+                    } else {
+                        type = 'bolardo'; height = 0.95;
+                        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.95, 12), new THREE.MeshStandardMaterial({ color: '#94a3b8' }));
+                        b.position.y = 0.47;
+                        grp.add(b);
+                    }
+                } else if (state.routeIdx === 2) {
+                    const r2 = Math.random();
+                    if (r2 < 0.35) {
+                        type = 'mesa'; height = 0.95;
+                        const table = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.85, 12), new THREE.MeshStandardMaterial({ color: '#92400e' }));
+                        table.position.y = 0.42;
+                        grp.add(table);
+                    } else if (r2 < 0.68) {
+                        type = 'carreta'; height = 1.25;
+                        const cart = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.15, 1.4), new THREE.MeshStandardMaterial({ color: '#f97316' }));
+                        cart.position.y = 0.58;
+                        grp.add(cart);
+                    } else {
+                        type = 'palomas'; height = 0.7;
+                        const flock = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), new THREE.MeshStandardMaterial({ color: '#e2e8f0' }));
+                        flock.position.y = 0.45;
+                        grp.add(flock);
+                    }
+                } else {
+                    const r3 = Math.random();
+                    if (r3 < 0.35) {
+                        type = 'perros'; height = 0.8;
+                        const leash = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.12, 0.12), new THREE.MeshStandardMaterial({ color: '#f43f5e' }));
+                        leash.position.y = 0.45;
+                        grp.add(leash);
+                    } else if (r3 < 0.7) {
+                        type = 'valla'; height = 1.05;
+                        const fence = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.05, 0.35), new THREE.MeshStandardMaterial({ color: '#ea580c' }));
+                        fence.position.y = 0.52;
+                        grp.add(fence);
+                    } else {
+                        type = 'patinador'; height = 1.35;
+                        const skater = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 1.4, 10), new THREE.MeshStandardMaterial({ color: '#8b5cf6' }));
+                        skater.position.y = 0.7;
+                        grp.add(skater);
+                    }
+                }
+
+                grp.position.set(xPos, 0, zPos);
+                scene.add(grp);
+                obstacles.push({ mesh: grp, lane: laneIdx, type, height });
+            } else {
+                const roll = Math.random();
+                let category = 'food';
+                let subType = 'bunuelo';
+                let yPos = 0.95;
+
+                if (roll < 0.68) {
+                    category = 'food';
+                    const foods = ['bunuelo', 'changua', 'arepa', 'empanada', 'almojabana'];
+                    subType = foods[Math.floor(Math.random() * foods.length)];
+                    if (state.routeIdx === 0 && Math.random() < 0.3) yPos = 2.4;
+                } else {
+                    category = 'power';
+                    const powers = ['speed', 'jump', 'shield', 'bonus', 'magnet'];
+                    subType = powers[Math.floor(Math.random() * powers.length)];
+                }
+
+                const mesh = createColombianCollectibleMesh(category, subType);
+                mesh.position.set(xPos, yPos, zPos);
+                scene.add(mesh);
+                collectibles.push({ mesh, lane: laneIdx, category, subType, yPos });
+            }
+        }
+
+        // --- MODELOS 3D DE COMIDA COLOMBIANA Y HABILIDADES ESPECIALES ---
+        function createColombianCollectibleMesh(category, subType) {
+            const grp = new THREE.Group();
+            if (category === 'food') {
+                if (subType === 'bunuelo') {
+                    const sphere = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.36, 16, 16),
+                        new THREE.MeshStandardMaterial({ color: '#d97706', roughness: 0.55, emissive: '#92400e', emissiveIntensity: 0.25 })
+                    );
+                    grp.add(sphere);
+                } else if (subType === 'changua') {
+                    const bowl = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.38, 0.22, 0.28, 16),
+                        new THREE.MeshStandardMaterial({ color: '#9a3412', roughness: 0.6 })
+                    );
+                    const broth = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.35, 0.35, 0.04, 16),
+                        new THREE.MeshStandardMaterial({ color: '#fef9c3', emissive: '#fef08a', emissiveIntensity: 0.2 })
+                    );
+                    broth.position.y = 0.13;
+                    const cilantro = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.11, 8, 8),
+                        new THREE.MeshStandardMaterial({ color: '#16a34a' })
+                    );
+                    cilantro.position.y = 0.15;
+                    grp.add(bowl, broth, cilantro);
+                } else if (subType === 'arepa') {
+                    const disc = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.4, 0.4, 0.11, 18),
+                        new THREE.MeshStandardMaterial({ color: '#fde047', roughness: 0.5, emissive: '#ca8a04', emissiveIntensity: 0.25 })
+                    );
+                    disc.rotation.x = Math.PI / 3;
+                    grp.add(disc);
+                } else if (subType === 'empanada') {
+                    const halfMoon = new THREE.Mesh(
+                        new THREE.TorusGeometry(0.28, 0.16, 10, 16, Math.PI),
+                        new THREE.MeshStandardMaterial({ color: '#f59e0b', roughness: 0.45, emissive: '#b45309', emissiveIntensity: 0.3 })
+                    );
+                    halfMoon.rotation.z = -Math.PI / 4;
+                    grp.add(halfMoon);
+                } else {
+                    const dome = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.35, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.65),
+                        new THREE.MeshStandardMaterial({ color: '#fbbf24', roughness: 0.65, emissive: '#78350f', emissiveIntensity: 0.2 })
+                    );
+                    dome.position.y = -0.1;
+                    grp.add(dome);
+                }
+            } else {
+                const colorMap = {
+                    speed: '#06b6d4',
+                    jump: '#22c55e',
+                    shield: '#facc15',
+                    bonus: '#ec4899',
+                    magnet: '#ef4444'
+                };
+                const col = colorMap[subType] || '#facc15';
+                const mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.6, metalness: 0.6, roughness: 0.2 });
+
+                if (subType === 'magnet') {
+                    const uShape = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.11, 10, 18, Math.PI), mat);
+                    grp.add(uShape);
+                } else if (subType === 'shield') {
+                    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.1, 10, 20), mat);
+                    grp.add(ring);
+                } else if (subType === 'bonus') {
+                    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.38, 0), mat);
+                    grp.add(gem);
+                } else if (subType === 'speed') {
+                    const bolt = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.65, 6), mat);
+                    bolt.rotation.z = -Math.PI / 4;
+                    grp.add(bolt);
+                } else {
+                    const spring = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.55, 12), mat);
+                    grp.add(spring);
+                }
+            }
+            return grp;
+        }
+
+        function spawnPickupBurst(pos, colorHex) {
+            const burstGeo = new THREE.RingGeometry(0.2, 0.55, 16);
+            const burstMat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 1 });
+            const ring = new THREE.Mesh(burstGeo, burstMat);
+            ring.position.copy(pos);
+            ring.position.y += 0.8;
+            scene.add(ring);
+            pickupBursts.push({ mesh: ring, life: 0.45 });
+        }
+
+        // --- NOTIFICACIONES ---
+        function showToast(text, gradientClass = "from-amber-500 to-orange-500") {
+            const area = document.getElementById('toast-area');
+            const el = document.createElement('div');
+            el.className = `toast-anim absolute left-1/2 top-0 px-4 py-1.5 rounded-full bg-gradient-to-r ${gradientClass} text-white font-black text-xs sm:text-sm shadow-lg whitespace-nowrap`;
+            el.innerText = text;
+            area.appendChild(el);
+            setTimeout(() => el.remove(), 1650);
+        }
+
+        // --- CONTROLES INDEPENDIENTES DE GONZALO Y MARK ARENA ---
+        function moveLane(who, dir) {
+            if (!state.running) return;
+            const maxLane = getActiveLanes().length - 1;
+            const char = who === 'gonzalo' ? state.gonzalo : state.mark;
+            if (!char.alive || char.fallingHole) return;
+
+            char.lane = Math.max(0, Math.min(maxLane, char.lane + dir));
+
+            if (state.stumbleTimer > 0 && state.gonzalo.alive && state.mark.alive && state.gonzalo.lane === state.mark.lane) {
+                state.stumbleTimer = 0;
+                state.score += 200;
+                sfx.playRelay();
+                showToast("🙌 ¡RELEVO DE ENERGÍA! COMBO SALVADO (+200)", "from-emerald-500 to-teal-500");
+            }
+        }
+
+        function triggerJump(who) {
+            if (!state.running) return;
+            const now = performance.now();
+            const isGonzalo = who === 'gonzalo';
+            const char = isGonzalo ? state.gonzalo : state.mark;
+            if (!char.alive || char.fallingHole) return;
+
+            if (!char.jumping) {
+                char.jumping = true;
+                char.relayed = false;
+                const jumpBoost = char.buffs.jump > 0 ? 1.38 : 1.0;
+                char.vy = (isGonzalo ? 12.6 : 11.4) * jumpBoost;
+                sfx.playJump(isGonzalo ? "A4" : "F4");
+
+                if (isGonzalo) state.lastJumpGonzalo = now;
+                else state.lastJumpMark = now;
+
+                if (state.gonzalo.alive && state.mark.alive) {
+                    const diff = Math.abs(state.lastJumpGonzalo - state.lastJumpMark);
+                    if (diff <= 350 && !state.syncAwardedThisJump) {
+                        state.syncAwardedThisJump = true;
+                        state.syncCount++;
+                        state.combo = Math.min(5, state.combo + 1);
+                        state.maxCombo = Math.max(state.maxCombo, state.combo);
+                        state.gonzalo.vy = Math.max(state.gonzalo.vy, 14.5);
+                        const mult = (state.gonzalo.buffs.bonus > 0 || state.mark.buffs.bonus > 0) ? 2 : 1;
+                        const pts = 300 * state.combo * mult;
+                        state.score += pts;
+                        sfx.playSync();
+                        showToast(`🤝 ¡IMPULSO DE HOMBROS! +${pts} PTS (x${state.combo})`, "from-amber-500 to-rose-500");
+                        updateHUD();
+                    } else if (diff > 350) {
+                        state.syncAwardedThisJump = false;
+                    }
+                }
+            }
+        }
+
+        function triggerRelayOrSprint() {
+            if (!state.running) return;
+            if (state.gonzalo.alive && state.gonzalo.jumping && !state.gonzalo.relayed) {
+                state.gonzalo.vy = 11.8;
+                state.gonzalo.relayed = true;
+                sfx.playRelay();
+                showToast("🚀 ¡IMPULSO AÉREO DE GONZALO!", "from-sky-500 to-indigo-500");
+                return;
+            }
+            if (state.mark.alive && state.mark.jumping && !state.mark.relayed) {
+                state.mark.vy = 11.2;
+                state.mark.relayed = true;
+                sfx.playRelay();
+                showToast("🚀 ¡IMPULSO AÉREO DE MARK ARENA!", "from-amber-500 to-orange-600");
+                return;
+            }
+            if (state.energy >= 50 && state.sprintTimer <= 0) {
+                state.energy -= 50;
+                state.sprintTimer = 4.0;
+                sfx.playSync();
+                showToast("⚡ ¡SPRINT COOPERATIVO ACTIVADO!", "from-sky-400 to-amber-400");
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (!state.running) return;
+            if (e.code === 'KeyA') moveLane('gonzalo', -1);
+            if (e.code === 'KeyD') moveLane('gonzalo', 1);
+            if (e.code === 'KeyW') triggerJump('gonzalo');
+
+            if (e.code === 'ArrowLeft') moveLane('mark', -1);
+            if (e.code === 'ArrowRight') moveLane('mark', 1);
+            if (e.code === 'ArrowUp') triggerJump('mark');
+
+            if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                e.preventDefault();
+                triggerRelayOrSprint();
+            }
+        });
+
+        document.getElementById('btn-g-left').addEventListener('click', () => moveLane('gonzalo', -1));
+        document.getElementById('btn-g-right').addEventListener('click', () => moveLane('gonzalo', 1));
+        document.getElementById('btn-g-jump').addEventListener('click', () => triggerJump('gonzalo'));
+        document.getElementById('btn-m-left').addEventListener('click', () => moveLane('mark', -1));
+        document.getElementById('btn-m-right').addEventListener('click', () => moveLane('mark', 1));
+        document.getElementById('btn-m-jump').addEventListener('click', () => triggerJump('mark'));
+        document.getElementById('btn-relay').addEventListener('click', triggerRelayOrSprint);
+
+        // --- ACTUALIZACIÓN DE HUD ---
+        function renderBuffBadges(elementId, buffs) {
+            const container = document.getElementById(elementId);
+            const badges = [];
+            if (buffs.speed > 0) badges.push(`<span class="bg-cyan-500/30 border border-cyan-400 text-cyan-200 px-1.5 py-0.2 rounded text-[9px]">⚡ ${Math.ceil(buffs.speed)}s</span>`);
+            if (buffs.jump > 0) badges.push(`<span class="bg-emerald-500/30 border border-emerald-400 text-emerald-200 px-1.5 py-0.2 rounded text-[9px]">🦘 ${Math.ceil(buffs.jump)}s</span>`);
+            if (buffs.shield > 0) badges.push(`<span class="bg-amber-500/30 border border-amber-400 text-amber-200 px-1.5 py-0.2 rounded text-[9px]">🛡️ ${Math.ceil(buffs.shield)}s</span>`);
+            if (buffs.bonus > 0) badges.push(`<span class="bg-pink-500/30 border border-pink-400 text-pink-200 px-1.5 py-0.2 rounded text-[9px]">💎 x2 (${Math.ceil(buffs.bonus)}s)</span>`);
+            if (buffs.magnet > 0) badges.push(`<span class="bg-rose-500/30 border border-rose-400 text-rose-200 px-1.5 py-0.2 rounded text-[9px]">🧲 ${Math.ceil(buffs.magnet)}s</span>`);
+            container.innerHTML = badges.join('');
+        }
+
+        function updateHUD() {
+            const r = ROUTES[state.routeIdx];
+            document.getElementById('hud-score').innerText = Math.floor(state.score).toLocaleString('es-CO');
+            const hasBonus = state.gonzalo.buffs.bonus > 0 || state.mark.buffs.bonus > 0;
+            const totalMult = state.combo * (hasBonus ? 2 : 1);
+            document.getElementById('hud-combo').innerText = `x${totalMult}`;
+
+            document.getElementById('status-gonzalo').innerHTML = state.gonzalo.alive
+                ? `<span>🧢 Gonzalo:</span> <span class="text-emerald-400">Corriendo</span>`
+                : `<span>🧢 Gonzalo:</span> <span class="text-rose-400">Fuera (Poder revive)</span>`;
+
+            document.getElementById('status-mark').innerHTML = state.mark.alive
+                ? `<span>🧥 Mark Arena:</span> <span class="text-emerald-400">Corriendo</span>`
+                : `<span>🧥 Mark Arena:</span> <span class="text-rose-400">Fuera (Poder revive)</span>`;
+
+            renderBuffBadges('timers-gonzalo', state.gonzalo.buffs);
+            renderBuffBadges('timers-mark', state.mark.buffs);
+
+            const pct = Math.min(100, (state.distance / r.length) * 100);
+            document.getElementById('route-progress').style.width = `${pct}%`;
+
+            const alertEl = document.getElementById('section-alert');
+            if (state.inLake) {
+                alertEl.innerText = pct > 62
+                    ? "⚠️ ¡DESAFÍO DE SALIDA DEL LAGO! ESQUIVA ROCAS Y BOYAS PARA VOLVER A TIERRA"
+                    : "🚤 ¡LAGO PARQUE SIMÓN BOLÍVAR! CONDUCE TU LANCHA CON A/D Y ◀/▶";
+                alertEl.classList.remove('hidden');
+            } else if (state.routeIdx === 0 && pct > 45 && pct < 68) {
+                alertEl.innerText = "🚡 ¡TRAMO DE TELEFÉRICO MONSERRATE! SALTA ENTRE CABINAS";
+                alertEl.classList.remove('hidden');
+            } else if (state.routeIdx === 1 && pct > 82) {
+                alertEl.innerText = "🏢 ¡ASCENSO FINAL EN ESCALERAS TORRE COLPATRIA!";
+                alertEl.classList.remove('hidden');
+            } else if (state.stumbleTimer > 0 && state.gonzalo.alive && state.mark.alive) {
+                alertEl.innerText = "⚠️ ¡TROPIEZO! JUNTA A MARK Y GONZALO EN EL MISMO CARRIL";
+                alertEl.classList.remove('hidden');
+            } else {
+                alertEl.classList.add('hidden');
+            }
+
+            document.getElementById('shared-energy-bar').style.width = `${state.energy}%`;
+            document.getElementById('energy-status').innerText = state.energy >= 50 ? "¡LISTO! PRESIONA SHIFT" : `${Math.floor(state.energy)}%`;
+
+            for (let i = 1; i <= 5; i++) {
+                const dot = document.getElementById(`dot-${i}`);
+                if (i <= state.combo) {
+                    dot.classList.remove('bg-slate-600');
+                    dot.classList.add('bg-amber-400');
+                } else {
+                    dot.classList.add('bg-slate-600');
+                    dot.classList.remove('bg-amber-400');
+                }
+            }
+
+            shieldRingMatG.opacity = state.gonzalo.buffs.shield > 0 ? 0.85 : 0;
+            shieldRingMatM.opacity = state.mark.buffs.shield > 0 ? 0.85 : 0;
+        }
+
+        // --- MANEJO DE ELIMINACIÓN INDIVIDUAL O FIN DE PARTIDA ---
+        function handleRunnerEliminated(who, message) {
+            sfx.playCrash();
+            if (who === 'gonzalo') {
+                state.gonzalo.alive = false;
+                gonzaloMesh.visible = false;
+                gonzaloPetMesh.visible = false;
+                gonzaloBoatMesh.visible = false;
+            } else {
+                state.mark.alive = false;
+                markMesh.visible = false;
+                markPetMesh.visible = false;
+                markBoatMesh.visible = false;
+            }
+            state.combo = 1;
+
+            if (!state.gonzalo.alive && !state.mark.alive) {
+                state.running = false;
+                document.getElementById('hud').classList.add('hidden');
+                document.getElementById('pigeon-overlay').classList.add('hidden');
+                document.getElementById('gameover-reason').innerText = message + " Ambos quedaron fuera en " + ROUTES[state.routeIdx].name + ".";
+                document.getElementById('gameover-score').innerText = Math.floor(state.score).toLocaleString('es-CO');
+                document.getElementById('gameover-screen').classList.remove('hidden');
+            } else {
+                const survivor = state.gonzalo.alive ? "Gonzalo" : "Mark Arena";
+                showToast(`💥 ${message} ¡${survivor} sigue corriendo!`, "from-rose-600 to-orange-600");
+                updateHUD();
+            }
+        }
+
+        // --- COMPLETAR NIVEL Y MEDALLAS ---
+        function completeRoute() {
+            state.running = false;
+            const r = ROUTES[state.routeIdx];
+            const finalPts = Math.floor(state.score);
+
+            let medal = { icon: '🥉', title: 'MEDALLA DE BRONCE', color: 'text-amber-500' };
+            if (finalPts >= r.thresholds.emerald) medal = { icon: '💎', title: 'MEDALLA ESMERALDA BOGOTANA', color: 'text-emerald-400' };
+            else if (finalPts >= r.thresholds.gold) medal = { icon: '🥇', title: 'MEDALLA DE ORO', color: 'text-yellow-300' };
+            else if (finalPts >= r.thresholds.silver) medal = { icon: '🥈', title: 'MEDALLA DE PLATA', color: 'text-slate-200' };
+
+            document.getElementById('medal-icon').innerText = medal.icon;
+            const mTitle = document.getElementById('medal-title');
+            mTitle.innerText = medal.title;
+            mTitle.className = `text-xs font-extrabold uppercase tracking-widest mb-1 ${medal.color}`;
+
+            document.getElementById('complete-title').innerText = r.finishTitle;
+            document.getElementById('complete-desc').innerText = r.finishDesc;
+            document.getElementById('complete-score').innerText = finalPts.toLocaleString('es-CO');
+            document.getElementById('complete-syncs').innerText = state.syncCount;
+            document.getElementById('complete-combo').innerText = `x${state.maxCombo}`;
+
+            const nextBtn = document.getElementById('next-level-btn');
+            nextBtn.innerText = state.routeIdx < ROUTES.length - 1
+                ? `CONTINUAR A ${ROUTES[state.routeIdx + 1].name.toUpperCase()} ➡️`
+                : "¡VOLVER A RECORRER BOGOTÁ! 🔄";
+
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('pigeon-overlay').classList.add('hidden');
+            document.getElementById('level-complete-screen').classList.remove('hidden');
+            sfx.playSync();
+        }
+
+        // --- BUCLE PRINCIPAL ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+            const elapsed = clock.elapsedTime;
+
+            if (inWardrobe) {
+                const activeMesh = activeWardrobeChar === 'gonzalo' ? gonzaloMesh : markMesh;
+                const activePet = activeWardrobeChar === 'gonzalo' ? gonzaloPetMesh : markPetMesh;
+
+                // Movimiento natural animado (giro suave, saludo de brazo y salto alegre de mascota)
+                activeMesh.rotation.y = Math.PI + Math.sin(elapsed * 1.3) * 0.38;
+                activeMesh.position.y = 0.24 + Math.sin(elapsed * 3) * 0.03;
+                if (activeMesh.userData.armR) {
+                    activeMesh.userData.armR.rotation.z = -0.35 + Math.sin(elapsed * 4.5) * 0.28;
+                }
+                activePet.position.y = 0.24 + Math.abs(Math.sin(elapsed * 4.2)) * 0.16;
+                activePet.rotation.y = Math.PI + Math.cos(elapsed * 2) * 0.3;
+
+                renderer.render(scene, camera);
+                return;
+            }
+
+            if (state.running) {
+                const r = ROUTES[state.routeIdx];
+                const lanes = getActiveLanes();
+
+                ['gonzalo', 'mark'].forEach(key => {
+                    const b = state[key].buffs;
+                    if (b.speed > 0) b.speed = Math.max(0, b.speed - dt);
+                    if (b.jump > 0) b.jump = Math.max(0, b.jump - dt);
+                    if (b.shield > 0) b.shield = Math.max(0, b.shield - dt);
+                    if (b.bonus > 0) b.bonus = Math.max(0, b.bonus - dt);
+                    if (b.magnet > 0) b.magnet = Math.max(0, b.magnet - dt);
+                });
+
+                let speed = r.speed;
+                if (state.sprintTimer > 0) { speed *= 1.35; state.sprintTimer -= dt; }
+                if (state.gonzalo.buffs.speed > 0 || state.mark.buffs.speed > 0) { speed *= 1.28; }
+
+                if (state.stumbleTimer > 0) {
+                    state.stumbleTimer -= dt;
+                    if (state.stumbleTimer <= 0) state.combo = 1;
+                }
+
+                const hasBonus = state.gonzalo.buffs.bonus > 0 || state.mark.buffs.bonus > 0;
+                const totalMult = state.combo * (hasBonus ? 2 : 1);
+                state.distance += speed * dt;
+                state.score += speed * dt * 8 * totalMult;
+
+                const pct = Math.min(1, state.distance / r.length);
+
+                // Activar y desactivar el tramo en Lancha por el Lago Simón Bolívar (en Nivel 4 entre 25% y 75%)
+                const shouldBeInLake = (state.routeIdx === 3 && pct >= 0.25 && pct <= 0.75);
+                if (shouldBeInLake !== state.inLake) {
+                    state.inLake = shouldBeInLake;
+                    lakeSurfaceMesh.visible = shouldBeInLake;
+                    gonzaloBoatMesh.visible = shouldBeInLake && state.gonzalo.alive;
+                    markBoatMesh.visible = shouldBeInLake && state.mark.alive;
+
+                    if (shouldBeInLake && !state.lakeToastShown) {
+                        state.lakeToastShown = true;
+                        sfx.playSync();
+                        showToast("🚤 ¡LLEGARON AL LAGO SIMÓN BOLÍVAR! SUBAN A LAS LANCHAS", "from-cyan-500 to-blue-600");
+                    } else if (!shouldBeInLake && !state.lakeExitToastShown) {
+                        state.lakeExitToastShown = true;
+                        sfx.playSync();
+                        showToast("🏃 ¡SALIERON DEL LAGO! DE VUELTA A TIERRA FIRME", "from-emerald-500 to-amber-500");
+                    }
+                }
+
+                if (state.inLake) {
+                    lakeWaterMat.color.setHSL(0.55 + Math.sin(elapsed * 2) * 0.02, 0.85, 0.42);
+                }
+
+                const cStart = new THREE.Color(r.skyStart);
+                const cEnd = new THREE.Color(r.skyEnd);
+                cStart.lerp(cEnd, pct);
+                scene.background.copy(cStart);
+                scene.fog.color.copy(cStart);
+
+                if (roadMat.map) roadMat.map.offset.y -= speed * dt * 0.14;
+
+                const wrapSpan = 24 * 8.5;
+                for (let b of sideBlocks) {
+                    b.position.z += speed * dt;
+                    if (b.position.z > 14) b.position.z -= wrapSpan;
+                }
+
+                const remDist = r.length - state.distance;
+                finishGroup.position.z = -remDist;
+                if (remDist <= 0) {
+                    completeRoute();
+                    renderer.render(scene, camera);
+                    return;
+                }
+
+                // Físicas de Gonzalo (incluye caída si cae en un hueco)
+                if (state.gonzalo.alive) {
+                    const gTargetX = lanes[state.gonzalo.lane];
+                    const lerpFactor = state.routeIdx === 2 ? 9 : 15;
+                    gonzaloMesh.position.x += (gTargetX - gonzaloMesh.position.x) * lerpFactor * dt;
+
+                    const shareLane = state.mark.alive && state.gonzalo.lane === state.mark.lane;
+                    gonzaloMesh.position.z += ((shareLane ? -0.45 : 0) - gonzaloMesh.position.z) * 12 * dt;
+
+                    if (state.gonzalo.fallingHole) {
+                        state.gonzalo.y -= 9.5 * dt;
+                        gonzaloMesh.rotation.x += 6 * dt;
+                        if (state.gonzalo.y <= -2.2) {
+                            state.gonzalo.fallingHole = false;
+                            gonzaloMesh.rotation.x = 0;
+                            handleRunnerEliminated('gonzalo', '¡Gonzalo cayó en un hueco!');
+                        }
+                    } else if (state.gonzalo.jumping) {
+                        state.gonzalo.y += state.gonzalo.vy * dt;
+                        state.gonzalo.vy -= 30 * dt;
+                        if (state.gonzalo.y <= 0) {
+                            state.gonzalo.y = 0;
+                            state.gonzalo.vy = 0;
+                            state.gonzalo.jumping = false;
+                            state.gonzalo.relayed = false;
+                        }
+                    }
+                    gonzaloMesh.position.y = state.gonzalo.y;
+                }
+
+                // Físicas de Mark Arena (incluye caída si cae en un hueco)
+                if (state.mark.alive) {
+                    const mTargetX = lanes[state.mark.lane];
+                    const lerpFactor = state.routeIdx === 2 ? 9 : 15;
+                    markMesh.position.x += (mTargetX - markMesh.position.x) * lerpFactor * dt;
+
+                    const shareLane = state.gonzalo.alive && state.gonzalo.lane === state.mark.lane;
+                    markMesh.position.z += ((shareLane ? 0.45 : 0) - markMesh.position.z) * 12 * dt;
+
+                    if (state.mark.fallingHole) {
+                        state.mark.y -= 9.5 * dt;
+                        markMesh.rotation.x += 6 * dt;
+                        if (state.mark.y <= -2.2) {
+                            state.mark.fallingHole = false;
+                            markMesh.rotation.x = 0;
+                            handleRunnerEliminated('mark', '¡Mark Arena cayó en un hueco!');
+                        }
+                    } else if (state.mark.jumping) {
+                        state.mark.y += state.mark.vy * dt;
+                        state.mark.vy -= 30 * dt;
+                        if (state.mark.y <= 0) {
+                            state.mark.y = 0;
+                            state.mark.vy = 0;
+                            state.mark.jumping = false;
+                            state.mark.relayed = false;
+                        }
+                    }
+                    markMesh.position.y = state.mark.y;
+                }
+
+                // Animaciones de zancada, lanchas y mascotas acompañantes
+                const stride = Math.sin(elapsed * 16) * 0.65;
+                if (state.gonzalo.alive) {
+                    if (state.inLake) {
+                        const waveG = Math.sin(elapsed * 6) * 0.07;
+                        gonzaloBoatMesh.visible = true;
+                        gonzaloBoatMesh.position.set(gonzaloMesh.position.x, state.gonzalo.y + 0.08 + waveG, gonzaloMesh.position.z);
+                        gonzaloBoatMesh.rotation.z = Math.sin(elapsed * 5) * 0.06;
+                        gonzaloMesh.position.y = state.gonzalo.y + 0.34 + waveG;
+                        gonzaloMesh.userData.legL.rotation.x = 0;
+                        gonzaloMesh.userData.legR.rotation.x = 0;
+
+                        // Mascota acompañando dentro de la proa de la lancha de Gonzalo
+                        gonzaloPetMesh.position.set(gonzaloMesh.position.x, state.gonzalo.y + 0.44 + waveG, gonzaloMesh.position.z - 0.85);
+                        gonzaloPetMesh.rotation.y = Math.sin(elapsed * 4) * 0.2;
+                    } else {
+                        gonzaloBoatMesh.visible = false;
+                        gonzaloMesh.userData.legL.rotation.x = state.gonzalo.jumping ? 0.5 : stride;
+                        gonzaloMesh.userData.legR.rotation.x = state.gonzalo.jumping ? -0.4 : -stride;
+
+                        if (petCelebrateTimerG > 0) petCelebrateTimerG -= dt;
+                        const celY_G = petCelebrateTimerG > 0 ? Math.abs(Math.sin(elapsed * 18)) * 0.55 : 0;
+                        gonzaloPetMesh.position.set(
+                            gonzaloMesh.position.x - 0.62,
+                            Math.max(0, state.gonzalo.y) + celY_G + (gonzaloPetMesh.userData.isBird ? 0.35 + Math.sin(elapsed * 10) * 0.12 : 0),
+                            gonzaloMesh.position.z + 0.15
+                        );
+                        gonzaloPetMesh.rotation.y = petCelebrateTimerG > 0 ? elapsed * 10 : 0;
+                        if (!gonzaloPetMesh.userData.isBird) {
+                            gonzaloPetMesh.userData.legFL.rotation.x = stride * 1.2;
+                            gonzaloPetMesh.userData.legFR.rotation.x = -stride * 1.2;
+                            gonzaloPetMesh.userData.legBL.rotation.x = -stride * 1.2;
+                            gonzaloPetMesh.userData.legBR.rotation.x = stride * 1.2;
+                        } else {
+                            gonzaloPetMesh.userData.legFL.rotation.z = Math.sin(elapsed * 22) * 0.6;
+                            gonzaloPetMesh.userData.legFR.rotation.z = -Math.sin(elapsed * 22) * 0.6;
+                        }
+                    }
+                }
+                if (state.mark.alive) {
+                    if (state.inLake) {
+                        const waveM = Math.cos(elapsed * 6) * 0.07;
+                        markBoatMesh.visible = true;
+                        markBoatMesh.position.set(markMesh.position.x, state.mark.y + 0.08 + waveM, markMesh.position.z);
+                        markBoatMesh.rotation.z = Math.cos(elapsed * 5) * 0.06;
+                        markMesh.position.y = state.mark.y + 0.34 + waveM;
+                        markMesh.userData.legL.rotation.x = 0;
+                        markMesh.userData.legR.rotation.x = 0;
+
+                        // Mascota acompañando dentro de la proa de la lancha de Mark Arena
+                        markPetMesh.position.set(markMesh.position.x, state.mark.y + 0.44 + waveM, markMesh.position.z - 0.85);
+                        markPetMesh.rotation.y = Math.cos(elapsed * 4) * 0.2;
+                    } else {
+                        markBoatMesh.visible = false;
+                        markMesh.userData.legL.rotation.x = state.mark.jumping ? 0.45 : -stride;
+                        markMesh.userData.legR.rotation.x = state.mark.jumping ? -0.45 : stride;
+                        markMesh.userData.scarfTail.rotation.x = 0.35 + Math.sin(elapsed * 14) * 0.22;
+
+                        if (petCelebrateTimerM > 0) petCelebrateTimerM -= dt;
+                        const celY_M = petCelebrateTimerM > 0 ? Math.abs(Math.sin(elapsed * 18)) * 0.55 : 0;
+                        markPetMesh.position.set(
+                            markMesh.position.x + 0.62,
+                            Math.max(0, state.mark.y) + celY_M + (markPetMesh.userData.isBird ? 0.35 + Math.sin(elapsed * 10) * 0.12 : 0),
+                            markMesh.position.z + 0.15
+                        );
+                        markPetMesh.rotation.y = petCelebrateTimerM > 0 ? -elapsed * 10 : 0;
+                        if (!markPetMesh.userData.isBird) {
+                            markPetMesh.userData.legFL.rotation.x = -stride * 1.2;
+                            markPetMesh.userData.legFR.rotation.x = stride * 1.2;
+                            markPetMesh.userData.legBL.rotation.x = stride * 1.2;
+                            markPetMesh.userData.legBR.rotation.x = -stride * 1.2;
+                        } else {
+                            markPetMesh.userData.legFL.rotation.z = Math.sin(elapsed * 22) * 0.6;
+                            markPetMesh.userData.legFR.rotation.z = -Math.sin(elapsed * 22) * 0.6;
+                        }
+                    }
+                }
+                shieldG.rotation.y += 2.5 * dt;
+                shieldM.rotation.y -= 2.5 * dt;
+
+                // Cámara dinámica
+                let activeX = 0;
+                if (state.gonzalo.alive && state.mark.alive) activeX = (gonzaloMesh.position.x + markMesh.position.x) * 0.3;
+                else if (state.gonzalo.alive) activeX = gonzaloMesh.position.x * 0.45;
+                else if (state.mark.alive) activeX = markMesh.position.x * 0.45;
+
+                camera.position.x += (activeX - camera.position.x) * 5 * dt;
+                const targetZ = state.routeIdx === 2 ? 7.6 : (state.sprintTimer > 0 ? 9.6 : 8.8);
+                camera.position.z += (targetZ - camera.position.z) * 4 * dt;
+                camera.lookAt(activeX * 0.5, 1.3, -10);
+
+                if (state.routeIdx === 2 && Math.sin(elapsed * 0.7) > 0.94 && pct > 0.35) {
+                    document.getElementById('pigeon-overlay').classList.remove('hidden');
+                } else {
+                    document.getElementById('pigeon-overlay').classList.add('hidden');
+                }
+
+                // Spawner progresivo
+                spawnTimer -= dt;
+                if (spawnTimer <= 0 && remDist > 55) {
+                    spawnEntity();
+                    spawnTimer = Math.max(0.55, 1.25 - state.routeIdx * 0.15);
+                }
+
+                // Mover y evaluar obstáculos y huecos 3D
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    const obs = obstacles[i];
+                    const obsSpeed = obs.type === 'transmilenio' ? speed * 1.45 : (obs.type === 'ciclista' ? speed * 1.25 : speed);
+                    obs.mesh.position.z += obsSpeed * dt;
+
+                    if (obs.mesh.position.z > 9) {
+                        scene.remove(obs.mesh);
+                        obstacles.splice(i, 1);
+                        continue;
+                    }
+
+                    const zHitRange = obs.type === 'transmilenio' ? 2.3 : (obs.type === 'hueco' ? 0.85 : 0.65);
+                    if (Math.abs(obs.mesh.position.z) < zHitRange) {
+                        const hitG = state.gonzalo.alive && !state.gonzalo.fallingHole && obs.lane === state.gonzalo.lane && state.gonzalo.y < obs.height;
+                        const hitM = state.mark.alive && !state.mark.fallingHole && obs.lane === state.mark.lane && state.mark.y < obs.height;
+
+                        if (hitG || hitM) {
+                            // Colisión específica con Hueco 3D en el camino
+                            if (obs.type === 'hueco') {
+                                if (hitG) {
+                                    if (state.gonzalo.buffs.shield > 0) {
+                                        state.gonzalo.buffs.shield = 0;
+                                        state.gonzalo.vy = 11;
+                                        state.gonzalo.jumping = true;
+                                        showToast("🛡️ ¡PROTECCIÓN SALVÓ A GONZALO DEL HUECO!", "from-yellow-500 to-amber-600");
+                                    } else {
+                                        state.gonzalo.fallingHole = true;
+                                        sfx.playCrash();
+                                    }
+                                }
+                                if (hitM) {
+                                    if (state.mark.buffs.shield > 0) {
+                                        state.mark.buffs.shield = 0;
+                                        state.mark.vy = 11;
+                                        state.mark.jumping = true;
+                                        showToast("🛡️ ¡PROTECCIÓN SALVÓ A MARK DEL HUECO!", "from-sky-500 to-blue-600");
+                                    } else {
+                                        state.mark.fallingHole = true;
+                                        sfx.playCrash();
+                                    }
+                                }
+                                continue;
+                            }
+
+                            if (hitM && !hitG && obs.type === 'charco') {
+                                scene.remove(obs.mesh);
+                                obstacles.splice(i, 1);
+                                showToast("🥾 ¡BOTAS DE MARK ARENA CRUZAN EL CHARCO!", "from-slate-600 to-sky-600");
+                                continue;
+                            }
+
+                            if (hitG && state.gonzalo.buffs.shield > 0) {
+                                state.gonzalo.buffs.shield = 0;
+                                scene.remove(obs.mesh);
+                                obstacles.splice(i, 1);
+                                showToast("🛡️ ¡PROTECCIÓN DE GONZALO ABSORBIÓ EL GOLPE!", "from-yellow-500 to-amber-600");
+                                continue;
+                            }
+                            if (hitM && state.mark.buffs.shield > 0) {
+                                state.mark.buffs.shield = 0;
+                                scene.remove(obs.mesh);
+                                obstacles.splice(i, 1);
+                                showToast("🛡️ ¡PROTECCIÓN DE MARK ARENA ABSORBIÓ EL GOLPE!", "from-sky-500 to-blue-600");
+                                continue;
+                            }
+
+                            if (obs.type === 'charco' || obs.type === 'palomas' || obs.type === 'escalon') {
+                                state.stumbleTimer = 2.5;
+                                scene.remove(obs.mesh);
+                                obstacles.splice(i, 1);
+                                sfx.playCrash();
+                                showToast("⚠️ ¡TROPIEZO! CRUZA CARRILES PARA RELEVO", "from-orange-500 to-red-600");
+                                continue;
+                            } else {
+                                scene.remove(obs.mesh);
+                                obstacles.splice(i, 1);
+                                if (hitG && hitM) {
+                                    handleRunnerEliminated('gonzalo', '¡Gonzalo tropezó!');
+                                    if (state.running) handleRunnerEliminated('mark', '¡Mark Arena tropezó!');
+                                } else if (hitG) {
+                                    handleRunnerEliminated('gonzalo', '¡Gonzalo cayó!');
+                                } else if (hitM) {
+                                    handleRunnerEliminated('mark', '¡Mark Arena cayó!');
+                                }
+                                if (!state.running) break;
+                            }
+                        }
+                    }
+                }
+
+                // Coleccionables Colombianos e Habilidades Especiales
+                for (let i = collectibles.length - 1; i >= 0; i--) {
+                    const col = collectibles[i];
+                    col.mesh.position.z += speed * dt;
+                    col.mesh.rotation.y += 3.2 * dt;
+                    col.mesh.position.y = col.yPos + Math.sin(elapsed * 5 + i) * 0.14;
+
+                    if (col.mesh.position.z > -22 && col.mesh.position.z < 1) {
+                        if (state.gonzalo.alive && state.gonzalo.buffs.magnet > 0) {
+                            col.mesh.position.x += (gonzaloMesh.position.x - col.mesh.position.x) * 8 * dt;
+                            col.lane = state.gonzalo.lane;
+                        } else if (state.mark.alive && state.mark.buffs.magnet > 0) {
+                            col.mesh.position.x += (markMesh.position.x - col.mesh.position.x) * 8 * dt;
+                            col.lane = state.mark.lane;
+                        }
+                    }
+
+                    if (col.mesh.position.z > 8) {
+                        scene.remove(col.mesh);
+                        collectibles.splice(i, 1);
+                        continue;
+                    }
+
+                    if (Math.abs(col.mesh.position.z) < 0.9) {
+                        const getG = state.gonzalo.alive && col.lane === state.gonzalo.lane && Math.abs((state.gonzalo.y + 1.0) - col.yPos) < 1.25;
+                        const getM = state.mark.alive && col.lane === state.mark.lane && Math.abs((state.mark.y + 1.0) - col.yPos) < 1.25;
+
+                        if (getG || getM) {
+                            const collector = getG ? state.gonzalo : state.mark;
+                            const collectorName = getG ? "Gonzalo" : "Mark Arena";
+                            if (getG) petCelebrateTimerG = 1.2;
+                            if (getM) petCelebrateTimerM = 1.2;
+                            const mult = state.combo * (collector.buffs.bonus > 0 ? 2 : 1);
+
+                            if (col.category === 'food') {
+                                const foodInfo = {
+                                    bunuelo: { label: "🟡 BUÑUELO DORADO", pts: 150, energy: 15, color: '#f59e0b' },
+                                    changua: { label: "🍲 CHANGUA BOGOTANA", pts: 250, energy: 22, color: '#fef08a' },
+                                    arepa: { label: "🫓 AREPA ASADA", pts: 150, energy: 15, color: '#fde047' },
+                                    empanada: { label: "🥟 EMPANADA CON AJÍ", pts: 200, energy: 18, color: '#ea580c' },
+                                    almojabana: { label: "🥐 ALMOJÁBANA CALIENTE", pts: 180, energy: 16, color: '#fbbf24' }
+                                };
+                                const info = foodInfo[col.subType];
+                                const earned = info.pts * mult;
+                                state.score += earned;
+                                state.energy = Math.min(100, state.energy + info.energy);
+                                sfx.playItem(["E5", "G5", "B5"]);
+                                spawnPickupBurst(col.mesh.position, info.color);
+                                showToast(`${info.label} (${collectorName}) +${earned} PTS`, "from-amber-600 to-orange-500");
+                            } else {
+                                sfx.playShield();
+                                let revivedMsg = "";
+                                if (!state.gonzalo.alive) {
+                                    state.gonzalo.alive = true;
+                                    state.gonzalo.fallingHole = false;
+                                    state.gonzalo.y = 0;
+                                    gonzaloMesh.rotation.x = 0;
+                                    state.gonzalo.lane = state.mark.lane;
+                                    gonzaloMesh.visible = true;
+                                    gonzaloPetMesh.visible = true;
+                                    gonzaloBoatMesh.visible = state.inLake;
+                                    revivedMsg = " • ¡GONZALO REVIVE!";
+                                } else if (!state.mark.alive) {
+                                    state.mark.alive = true;
+                                    state.mark.fallingHole = false;
+                                    state.mark.y = 0;
+                                    markMesh.rotation.x = 0;
+                                    state.mark.lane = state.gonzalo.lane;
+                                    markMesh.visible = true;
+                                    markPetMesh.visible = true;
+                                    markBoatMesh.visible = state.inLake;
+                                    revivedMsg = " • ¡MARK ARENA REVIVE!";
+                                }
+
+                                if (col.subType === 'speed') {
+                                    collector.buffs.speed = 7;
+                                    spawnPickupBurst(col.mesh.position, '#06b6d4');
+                                    showToast(`⚡ ¡RAPIDEZ PARA ${collectorName.toUpperCase()} (7s)!${revivedMsg}`, "from-cyan-500 to-blue-600");
+                                } else if (col.subType === 'jump') {
+                                    collector.buffs.jump = 8;
+                                    spawnPickupBurst(col.mesh.position, '#22c55e');
+                                    showToast(`🦘 ¡SÚPER SALTO PARA ${collectorName.toUpperCase()} (8s)!${revivedMsg}`, "from-emerald-500 to-green-600");
+                                } else if (col.subType === 'shield') {
+                                    collector.buffs.shield = 10;
+                                    spawnPickupBurst(col.mesh.position, '#facc15');
+                                    showToast(`🛡️ ¡PROTECCIÓN PARA ${collectorName.toUpperCase()} (10s)!${revivedMsg}`, "from-yellow-500 to-amber-600");
+                                } else if (col.subType === 'bonus') {
+                                    collector.buffs.bonus = 9;
+                                    state.score += 400;
+                                    spawnPickupBurst(col.mesh.position, '#ec4899');
+                                    showToast(`💎 ¡PUNTOS EXTRA x2 PARA ${collectorName.toUpperCase()} (9s)!${revivedMsg}`, "from-pink-500 to-purple-600");
+                                } else {
+                                    collector.buffs.magnet = 8;
+                                    spawnPickupBurst(col.mesh.position, '#ef4444');
+                                    showToast(`🧲 ¡IMÁN DE PREMIOS PARA ${collectorName.toUpperCase()} (8s)!${revivedMsg}`, "from-rose-500 to-red-600");
+                                }
+                            }
+                            scene.remove(col.mesh);
+                            collectibles.splice(i, 1);
+                        }
+                    }
+                }
+
+                // Destellos 3D
+                for (let i = pickupBursts.length - 1; i >= 0; i--) {
+                    const b = pickupBursts[i];
+                    b.life -= dt;
+                    b.mesh.scale.addScalar(4.5 * dt);
+                    b.mesh.material.opacity = Math.max(0, b.life / 0.45);
+                    if (b.life <= 0) {
+                        scene.remove(b.mesh);
+                        pickupBursts.splice(i, 1);
+                    }
+                }
+
+                updateHUD();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Controles de Volumen, Silencio y Selector de Nivel
+        const volSlider = document.getElementById('volume-slider');
+        volSlider.addEventListener('input', (e) => {
+            sfx.setVolume(Number(e.target.value) / 100);
+        });
+
+        document.getElementById('vol-down-btn').addEventListener('click', () => {
+            const nextVal = Math.max(0, Number(volSlider.value) - 15);
+            volSlider.value = nextVal;
+            sfx.setVolume(nextVal / 100);
+        });
+
+        document.getElementById('vol-up-btn').addEventListener('click', () => {
+            const nextVal = Math.min(100, Number(volSlider.value) + 15);
+            volSlider.value = nextVal;
+            sfx.setVolume(nextVal / 100);
+        });
+
+        document.getElementById('mute-btn').addEventListener('click', () => {
+            const isMuted = sfx.toggleMute();
+            document.getElementById('mute-btn').innerText = isMuted ? '🔊' : '🔇';
+        });
+
+        document.getElementById('switch-level-btn').addEventListener('click', () => {
+            if (!state.running) return;
+            const nextIdx = (state.routeIdx + 1) % ROUTES.length;
+            loadRoute(nextIdx);
+            showToast(`🗺️ ${ROUTES[nextIdx].levelLabel} • ${ROUTES[nextIdx].genreLabel}`, "from-sky-500 to-amber-500");
+        });
+
+        document.getElementById('boat-stage-btn').addEventListener('click', () => {
+            if (!state.running) return;
+            loadRoute(3);
+            state.distance = ROUTES[3].length * 0.25;
+            showToast("🚤 ¡LAGO PARQUE SIMÓN BOLÍVAR! CONDUCE TU LANCHA", "from-cyan-500 to-blue-600");
+        });
+
+        let selectedStartRoute = 0;
+        document.querySelectorAll('.route-select-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedStartRoute = Number(btn.getAttribute('data-start-route'));
+                document.querySelectorAll('.route-select-btn').forEach(b => {
+                    b.classList.remove('border-amber-400', 'bg-amber-500/25', 'text-amber-200');
+                    b.classList.add('border-white/15', 'bg-white/5', 'text-slate-200');
+                });
+                btn.classList.remove('border-white/15', 'bg-white/5', 'text-slate-200');
+                btn.classList.add('border-amber-400', 'bg-amber-500/25', 'text-amber-200');
+            });
+        });
+
+        // Flujo de pantallas
+        document.getElementById('open-wardrobe-btn').addEventListener('click', () => {
+            document.getElementById('menu-screen').classList.add('hidden');
+            document.getElementById('wardrobe-screen').classList.remove('hidden');
+            enterWardrobeRoom();
+        });
+
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            await sfx.init();
+            inWardrobe = false;
+            wardrobeRoomGroup.visible = false;
+            gonzaloMesh.scale.setScalar(1);
+            markMesh.scale.setScalar(1);
+            if (gonzaloMesh.userData.armR) gonzaloMesh.userData.armR.rotation.z = -0.2;
+            if (markMesh.userData.armR) markMesh.userData.armR.rotation.z = -0.22;
+            state.score = 0;
+            state.combo = 1;
+            state.maxCombo = 1;
+            state.syncCount = 0;
+            state.energy = 50;
+            document.getElementById('wardrobe-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            loadRoute(selectedStartRoute);
+            state.running = true;
+        });
+
+        document.getElementById('next-level-btn').addEventListener('click', () => {
+            document.getElementById('level-complete-screen').classList.add('hidden');
+            if (state.routeIdx < ROUTES.length - 1) {
+                document.getElementById('hud').classList.remove('hidden');
+                loadRoute(state.routeIdx + 1);
+                state.running = true;
+            } else {
+                state.score = 0;
+                state.combo = 1;
+                state.maxCombo = 1;
+                state.syncCount = 0;
+                state.energy = 50;
+                document.getElementById('hud').classList.remove('hidden');
+                loadRoute(0);
+                state.running = true;
+            }
+        });
+
+        document.getElementById('retry-btn').addEventListener('click', () => {
+            document.getElementById('gameover-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            state.combo = 1;
+            loadRoute(state.routeIdx);
+            state.running = true;
+        });
+
+        document.getElementById('restart-all-btn').addEventListener('click', () => {
+            document.getElementById('gameover-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            state.score = 0;
+            state.combo = 1;
+            state.maxCombo = 1;
+            state.syncCount = 0;
+            state.energy = 50;
+            loadRoute(0);
+            state.running = true;
+        });
+
+        // Responsividad
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.onload = function () {
+            applyCustomization('gonzalo');
+            applyCustomization('mark');
+            rebuildSideLandmarks(0);
+            buildFinishMonument(0);
+            animate();
+        };
+    </script>
+</body>
+</html>
